@@ -1,0 +1,14 @@
+.git
+.github
+.hermes
+.next
+.playwright
+node_modules
+coverage
+playwright-report
+test-results
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example

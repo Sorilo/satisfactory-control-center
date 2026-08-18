@@ -1,0 +1,37 @@
+services:
+  control-center:
+    image: ${CONTROL_CENTER_IMAGE:-ghcr.io/sorilo/satisfactory-control-center:v0.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      DATA_MODE: ${DATA_MODE:-mock}
+      DEFAULT_SERVER_ID: ${DEFAULT_SERVER_ID:-main}
+      DEFAULT_SERVER_NAME: ${DEFAULT_SERVER_NAME:-Main World}
+      FRM_BASE_URL: ${FRM_BASE_URL:-}
+      FRM_TOKEN: ${FRM_TOKEN:-}
+      SERVERS_JSON: ${SERVERS_JSON:-}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+    ports:
+      - "${CONTROL_CENTER_BIND:-127.0.0.1}:${CONTROL_CENTER_PORT:-3000}:3000"
+    networks:
+      - game
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  game:
+    external: true
+    name: ${GAME_NETWORK:-sorilonet}

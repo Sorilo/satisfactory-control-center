@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATA_MODE: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --include=dev --ignore-scripts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+
+  browser:
+    name: Browser acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATA_MODE: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+      PLAYWRIGHT_BROWSERS_PATH: .playwright
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --include=dev --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: playwright-report/
+          retention-days: 7
+
+  container:
+    name: Authoritative container release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate Compose deployment contract
+        run: docker compose --env-file .env.example -f compose.example.yml config --quiet
+      - name: Build production image
+        run: docker build --pull --tag satisfactory-control-center:ci .
+      - name: Smoke-test hardened runtime and Slice 1 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name control-center-ci \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 128 \
+            --memory 512m \
+            --publish 127.0.0.1:3000:3000 \
+            --env DATA_MODE=mock \
+            satisfactory-control-center:ci
+          trap 'docker logs control-center-ci || true; docker rm --force control-center-ci || true' EXIT
+
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health/live > /tmp/live.json; then
+              break
+            fi
+            if [ "$attempt" -eq 45 ]; then
+              exit 1
+            fi
+            sleep 1
+          done
+
+          jq -e '.status == "live" and (keys | sort) == ["status"]' /tmp/live.json
+          docker inspect control-center-ci | jq -e '
+            .[0].Config.User == "app" and
+            .[0].HostConfig.ReadonlyRootfs == true and
+            (.[0].HostConfig.CapDrop | index("ALL")) != null and
+            (.[0].HostConfig.SecurityOpt | index("no-new-privileges")) != null
+          '
+          if docker exec control-center-ci touch /app/read-only-probe; then
+            echo "read-only root filesystem assertion failed" >&2
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:3000/api/health/ready > /tmp/ready.json
+          jq -e '.status == "ready" and (keys | sort) == ["status"]' /tmp/ready.json
+
+          curl --fail --silent http://127.0.0.1:3000/api/v1/servers > /tmp/servers.json
+          jq -e '.defaultServerId == "main" and (.servers | length) == 1 and .servers[0] == {"id":"main","displayName":"Main World"}' /tmp/servers.json
+
+          curl --fail --silent 'http://127.0.0.1:3000/api/v1/overview?serverId=main' > /tmp/overview.json
+          jq -e '
+            .apiVersion == "v1" and
+            .serverId == "main" and
+            .freshness.state == "live" and
+            .data.server.online == true and
+            .unavailableSources == []
+          ' /tmp/overview.json
+          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|https?://' /tmp/servers.json /tmp/overview.json; then
+            echo "public API leaked an internal configuration field" >&2
+            exit 1
+          fi
+      - name: Export the exact smoke-tested image
+        run: docker save satisfactory-control-center:ci | gzip -1 > /tmp/satisfactory-control-center.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-image-${{ github.sha }}
+          path: /tmp/satisfactory-control-center.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish smoke-tested image to GHCR
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [quality, browser, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: production-image-${{ github.sha }}
+          path: /tmp
+      - run: gunzip --stdout /tmp/satisfactory-control-center.tar.gz | docker load
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish immutable and channel references
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/satisfactory-control-center"
+          tags=("${image}:${GITHUB_SHA}")
+
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            tags+=("${image}:latest")
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            tags+=("${image}:${GITHUB_REF_NAME}")
+          fi
+
+          for tag in "${tags[@]}"; do
+            docker tag satisfactory-control-center:ci "$tag"
+            docker push "$tag"
+          done
