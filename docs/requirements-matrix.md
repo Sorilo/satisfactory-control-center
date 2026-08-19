@@ -23,11 +23,11 @@ This matrix prevents a production-shaped foundation from being mistaken for the 
 
 ## Residual risks through Slice 2
 
-- The FRM overview reads its five fixed endpoints concurrently, but one failed endpoint currently degrades the whole overview envelope; section-level partial degradation remains future work.
+- The FRM overview reads its four non-Power fixed endpoints concurrently, but one failed endpoint currently degrades the whole overview envelope; section-level partial degradation remains future work. Its Power summary is independently composed through the shared `PowerService` current cache.
 - The in-process limiter is intentionally single-replica. With proxy-header trust disabled, clients share one conservative bucket; production relies on the documented trusted reverse-proxy/CDN policy for distributed per-client enforcement.
 - Production App Router output currently requires CSP `script-src 'unsafe-inline'`; nonce-based script policy is a future defense-in-depth improvement.
 - Power realtime remains disabled by default until the actual reverse proxy/Tunnel path proves SSE buffering and disconnect behavior; curated HTTP polling remains the fallback.
-- Generator and major-consumer detail adapters remain blocked on reviewed sanitized `getGenerators` and `getPowerUsage` fixtures. The UI reports them unavailable rather than inferring data.
+- Generator and major-consumer details now depend on reviewed sanitized `/getGenerators` and `/getPowerUsage` subsets. Live upstream shape drift degrades each detail group independently; raw IDs/classes/locations and unresolved production fields remain excluded.
 
 ## Forbidden scope checks
 

@@ -44,6 +44,35 @@ export interface PowerCurrentState {
   circuits: PowerCircuit[];
 }
 
+export type PowerDetailCircuit =
+  | { state: "connected"; id: string }
+  | { state: "disconnected"; id: "-1" };
+
+export interface PowerFuelInventory {
+  name: string;
+  amount: number;
+  capacity: number;
+}
+
+export interface PowerGenerator {
+  name: string;
+  circuit: PowerDetailCircuit;
+  fuelType: "biomass" | "coal" | "fuel" | "geothermal" | "nuclear" | "unknown";
+  fuelInventory: PowerFuelInventory | null;
+  productionCapacityMw: number;
+  loadPercent: number;
+  canStart: boolean;
+  fuseTriggered: boolean;
+}
+
+export interface PowerMajorConsumer {
+  name: string;
+  circuit: PowerDetailCircuit;
+  consumptionMw: number;
+  maximumConsumptionMw: number;
+  fuseTriggered: boolean;
+}
+
 export const POWER_HISTORY_RANGES = ["1h", "6h", "24h", "7d", "15d"] as const;
 export type PowerHistoryRange = (typeof POWER_HISTORY_RANGES)[number];
 
@@ -99,6 +128,8 @@ export interface PowerHistoryRequest {
 
 export interface PowerProvider {
   getPower(): Promise<PowerCurrentState>;
+  getGenerators?(): Promise<PowerGenerator[]>;
+  getMajorConsumers?(): Promise<PowerMajorConsumer[]>;
 }
 
 /** Named history port: callers cannot supply PromQL or private selectors. */

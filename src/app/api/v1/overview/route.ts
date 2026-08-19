@@ -5,7 +5,10 @@ import {
   parseRuntimeConfig,
   resolvePublicServer,
 } from "@/lib/server/config/runtime-config";
-import { createFrmProvider } from "@/lib/server/providers/provider-factory";
+import {
+  createFrmProvider,
+  createPowerProviders,
+} from "@/lib/server/providers/provider-factory";
 import { getCachedOverviewEnvelope } from "@/lib/server/services/overview-service";
 import { getClientKey, TokenBucketLimiter } from "@/lib/server/security/rate-limiter";
 
@@ -75,7 +78,12 @@ export async function GET(request: Request) {
   }
 
   const provider = createFrmProvider(config, server);
-  const envelope = await getCachedOverviewEnvelope(serverId, provider);
+  const powerProvider = createPowerProviders(config, server).current;
+  const envelope = await getCachedOverviewEnvelope(
+    serverId,
+    provider,
+    powerProvider
+  );
   const body = overviewEnvelopeSchema.parse(envelope);
 
   return NextResponse.json(body, {

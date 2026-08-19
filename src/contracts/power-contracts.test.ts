@@ -52,10 +52,13 @@ function validEnvelope(): PowerEnvelope {
           items: [
             {
               name: "Coal Generator",
+              circuit: { state: "connected", id: "0" },
               fuelType: "coal",
+              fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
               productionCapacityMw: 75,
               loadPercent: 50,
               canStart: true,
+              fuseTriggered: false,
             },
           ],
         },
@@ -64,9 +67,10 @@ function validEnvelope(): PowerEnvelope {
           items: [
             {
               name: "Assembler Bank",
-              circuitId: "0",
+              circuit: { state: "connected", id: "0" },
               consumptionMw: 3,
               maximumConsumptionMw: 5,
+              fuseTriggered: false,
             },
           ],
         },
@@ -113,6 +117,60 @@ function withCurrent(overrides: Partial<PowerEnvelope["data"]["current"]>): Powe
 describe("power v1 contracts", () => {
   it("accepts a fully populated strict envelope", () => {
     expect(() => powerEnvelopeSchema.parse(validEnvelope())).not.toThrow();
+  });
+
+  it("accepts explicit connected/disconnected detail circuits and bounded safe fuel inventory", () => {
+    const envelope = validEnvelope();
+    envelope.data.current!.generators = {
+      state: "live",
+      items: [
+        {
+          name: "Biomass Burner",
+          circuit: { state: "disconnected", id: "-1" },
+          fuelType: "biomass",
+          fuelInventory: null,
+          productionCapacityMw: 20,
+          loadPercent: 0,
+          canStart: false,
+          fuseTriggered: false,
+        },
+      ],
+    } as never;
+    envelope.data.current!.majorConsumers = {
+      state: "live",
+      items: [
+        {
+          name: "Miner Mk.1",
+          circuit: { state: "connected", id: "0" },
+          consumptionMw: 5,
+          maximumConsumptionMw: 5,
+          fuseTriggered: false,
+        },
+      ],
+    } as never;
+
+    expect(() => powerEnvelopeSchema.parse(envelope)).not.toThrow();
+    expect(JSON.stringify(envelope)).not.toMatch(/location|ClassName|PowerProduction/i);
+  });
+
+  it("rejects contradictory normalized circuit states", () => {
+    for (const circuit of [
+      { state: "connected", id: "-1" },
+      { state: "disconnected", id: "0" },
+    ]) {
+      const envelope = validEnvelope();
+      envelope.data.current!.majorConsumers = {
+        state: "live",
+        items: [{
+          name: "Invalid",
+          circuit,
+          consumptionMw: 1,
+          maximumConsumptionMw: 1,
+          fuseTriggered: false,
+        }],
+      } as never;
+      expect(() => powerEnvelopeSchema.parse(envelope)).toThrow();
+    }
   });
 
   it("accepts live no-circuits current state with zero totals and no circuits", () => {
@@ -268,9 +326,10 @@ describe("power v1 contracts", () => {
       { length: 11 },
       (_, i) => ({
         name: `Consumer ${i}`,
-        circuitId: "0",
+        circuit: { state: "connected" as const, id: "0" },
         consumptionMw: 1,
         maximumConsumptionMw: 2,
+        fuseTriggered: false,
       })
     );
     expect(() => powerEnvelopeSchema.parse(consumers)).toThrow();

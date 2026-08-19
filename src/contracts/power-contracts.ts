@@ -65,9 +65,33 @@ const circuitSchema = z
   })
   .strict();
 
+const detailCircuitSchema = z.discriminatedUnion("state", [
+  z
+    .object({
+      state: z.literal("connected"),
+      id: circuitIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      state: z.literal("disconnected"),
+      id: z.literal("-1"),
+    })
+    .strict(),
+]);
+
+const fuelInventorySchema = z
+  .object({
+    name: z.string().min(1).max(160),
+    amount: finiteNonnegative,
+    capacity: finiteNonnegative,
+  })
+  .strict();
+
 const generatorSchema = z
   .object({
     name: z.string().min(1).max(160),
+    circuit: detailCircuitSchema,
     fuelType: z.enum([
       "biomass",
       "coal",
@@ -76,18 +100,21 @@ const generatorSchema = z
       "nuclear",
       "unknown",
     ]),
+    fuelInventory: z.union([fuelInventorySchema, z.null()]),
     productionCapacityMw: finiteNonnegative,
-    loadPercent: finiteNonnegative,
+    loadPercent: z.number().finite().min(0).max(100),
     canStart: z.boolean(),
+    fuseTriggered: z.boolean(),
   })
   .strict();
 
 const consumerSchema = z
   .object({
     name: z.string().min(1).max(160),
-    circuitId: z.union([circuitIdSchema, z.null()]),
+    circuit: detailCircuitSchema,
     consumptionMw: finiteNonnegative,
     maximumConsumptionMw: finiteNonnegative,
+    fuseTriggered: z.boolean(),
   })
   .strict();
 

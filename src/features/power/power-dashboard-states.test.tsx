@@ -162,29 +162,58 @@ describe("PowerDashboard state matrix", () => {
     const value = envelope();
     value.data.current!.generators = {
       state: "live",
-      items: [{
-        name: "Coal Generator 1",
-        fuelType: "coal",
-        productionCapacityMw: 75,
-        loadPercent: 80,
-        canStart: true,
-      }],
+      items: [
+        {
+          name: "Coal Generator 1",
+          circuit: { state: "connected", id: "7" },
+          fuelType: "coal",
+          fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
+          productionCapacityMw: 75,
+          loadPercent: 80,
+          canStart: true,
+          fuseTriggered: false,
+        },
+        {
+          name: "Biomass Burner",
+          circuit: { state: "disconnected", id: "-1" },
+          fuelType: "biomass",
+          fuelInventory: null,
+          productionCapacityMw: 20,
+          loadPercent: 0,
+          canStart: false,
+          fuseTriggered: false,
+        },
+      ],
     };
     value.data.current!.majorConsumers = {
       state: "live",
-      items: [{
-        name: "Aluminum Works",
-        circuitId: "7",
-        consumptionMw: 42,
-        maximumConsumptionMw: 50,
-      }],
+      items: [
+        {
+          name: "Aluminum Works",
+          circuit: { state: "connected", id: "7" },
+          consumptionMw: 42,
+          maximumConsumptionMw: 50,
+          fuseTriggered: false,
+        },
+        {
+          name: "Idle Miner",
+          circuit: { state: "connected", id: "8" },
+          consumptionMw: 0,
+          maximumConsumptionMw: 5,
+          fuseTriggered: false,
+        },
+      ],
     };
     render(<PowerDashboard envelope={value} dataMode="live" />);
     expect(screen.getByRole("heading", { name: "Generator details" })).toBeInTheDocument();
     expect(screen.getByText("Coal Generator 1")).toBeInTheDocument();
-    expect(screen.getByText(/^coal\s*·/i)).toBeInTheDocument();
+    expect(screen.getByText(/coal inventory 50 of 100/i)).toBeInTheDocument();
+    expect(screen.getByText("Biomass Burner")).toBeInTheDocument();
+    expect(screen.getAllByText(/disconnected/i)).not.toHaveLength(0);
     expect(screen.getByRole("heading", { name: "Major consumers" })).toBeInTheDocument();
     expect(screen.getByText("Aluminum Works")).toBeInTheDocument();
+    expect(screen.getByText("Idle Miner")).toBeInTheDocument();
+    expect(screen.getByText(/circuit 8.*0 mw of 5 mw/i)).toBeInTheDocument();
     expect(screen.queryByText(/power production/i)).not.toBeInTheDocument();
   });
 

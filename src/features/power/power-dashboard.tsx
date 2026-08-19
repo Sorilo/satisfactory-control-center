@@ -298,8 +298,48 @@ export function PowerDashboard({
       ) : null}
 
       <section className="power-detail-grid" aria-label="Optional power details">
-        <article className="panel"><p className="eyebrow">Generation</p>{current?.generators.state === "live" ? <><h2>Generator details</h2><ul className="power-detail-list">{current.generators.items.map((item) => <li key={item.name}><strong>{item.name}</strong><span>{item.fuelType ?? "Fuel not reported"} · {formatMw(item.productionCapacityMw)} capacity · {item.loadPercent.toFixed(1)}% load</span></li>)}</ul></> : <><h2>Generator details unavailable</h2><p className="muted">No reviewed generator payload fixture is available, so no generator records are inferred.</p></>}</article>
-        <article className="panel"><p className="eyebrow">Demand</p>{current?.majorConsumers.state === "live" ? <><h2>Major consumers</h2><ul className="power-detail-list">{current.majorConsumers.items.map((item) => <li key={`${item.circuitId}:${item.name}`}><strong>{item.name}</strong><span>Circuit {item.circuitId} · {formatMw(item.consumptionMw)} of {formatMw(item.maximumConsumptionMw)}</span></li>)}</ul></> : <><h2>Major-consumer details unavailable</h2><p className="muted">No reviewed consumer payload fixture is available, so no consumer records are inferred.</p></>}</article>
+        <article className="panel">
+          <p className="eyebrow">Generation</p>
+          {current?.generators.state === "live" ? current.generators.items.length ? (
+            <>
+              <h2>Generator details</h2>
+              <ul className="power-detail-list">
+                {current.generators.items.map((item, index) => (
+                  <li key={`${item.circuit.state}:${item.circuit.id}:${item.name}:${index}`}>
+                    <strong>{item.name}</strong>
+                    <span>
+                      {item.circuit.state === "connected" ? `Circuit ${item.circuit.id}` : "Disconnected"} · {item.fuelInventory ? `${item.fuelInventory.name} inventory ${item.fuelInventory.amount.toLocaleString("en-US")} of ${item.fuelInventory.capacity.toLocaleString("en-US")}` : `${item.fuelType} · inventory not reported`} · {formatMw(item.productionCapacityMw)} capacity · {item.loadPercent.toFixed(1)}% load · {item.canStart ? "Can start" : "Cannot start"}{item.fuseTriggered ? " · Fuse tripped" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <><h2>No generators reported</h2><p className="muted">The generator source answered successfully with no records.</p></>
+          ) : (
+            <><h2>Generator details unavailable</h2><p className="muted">Generator detail telemetry is unavailable. Aggregate current power remains visible.</p></>
+          )}
+        </article>
+        <article className="panel">
+          <p className="eyebrow">Demand</p>
+          {current?.majorConsumers.state === "live" ? current.majorConsumers.items.length ? (
+            <>
+              <h2>Major consumers</h2>
+              <ul className="power-detail-list">
+                {current.majorConsumers.items.map((item, index) => (
+                  <li key={`${item.circuit.state}:${item.circuit.id}:${item.name}:${index}`}>
+                    <strong>{item.name}</strong>
+                    <span>{item.circuit.state === "connected" ? `Circuit ${item.circuit.id}` : "Disconnected"} · {formatMw(item.consumptionMw)} of {formatMw(item.maximumConsumptionMw)}{item.fuseTriggered ? " · Fuse tripped" : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <><h2>No major consumers reported</h2><p className="muted">The consumer source answered successfully with no useful records.</p></>
+          ) : (
+            <><h2>Major-consumer details unavailable</h2><p className="muted">Consumer detail telemetry is unavailable. Aggregate current power remains visible.</p></>
+          )}
+        </article>
       </section>
     </div>
   );

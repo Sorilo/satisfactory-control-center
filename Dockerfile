@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_IMAGE=node:22-alpine3.21
+ARG APP_VERSION=development
 
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
@@ -15,6 +16,7 @@ COPY . .
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runner
+ARG APP_VERSION
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -24,7 +26,7 @@ ENV DATA_MODE=mock
 
 LABEL org.opencontainers.image.source="https://github.com/Sorilo/satisfactory-control-center" \
       org.opencontainers.image.title="Satisfactory Control Center" \
-      org.opencontainers.image.version="0.1.0"
+      org.opencontainers.image.version="${APP_VERSION}"
 
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 COPY --from=builder --chown=app:app /app/.next/standalone ./

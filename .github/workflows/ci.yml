@@ -67,7 +67,10 @@ jobs:
       - name: Validate Compose deployment contract
         run: docker compose --env-file .env.example -f compose.example.yml config --quiet
       - name: Build production image
-        run: docker build --pull --tag satisfactory-control-center:ci .
+        run: |
+          docker build --pull \
+            --build-arg APP_VERSION="$(node -p "require('./package.json').version")" \
+            --tag satisfactory-control-center:ci .
       - name: Smoke-test hardened runtime and Slice 1–2 contracts
         shell: bash
         run: |
@@ -95,6 +98,8 @@ jobs:
           done
 
           jq -e '.status == "live" and (keys | sort) == ["status"]' /tmp/live.json
+          test "$(docker image inspect satisfactory-control-center:ci --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = \
+            "$(node -p "require('./package.json').version")"
           docker inspect control-center-ci | jq -e '
             .[0].Config.User == "app" and
             .[0].HostConfig.ReadonlyRootfs == true and
@@ -128,6 +133,11 @@ jobs:
             .freshness.current.state == "live" and
             .data.current.topologyState == "available" and
             (.data.current.circuits | length) > 0 and
+            .data.current.generators.state == "live" and
+            (.data.current.generators.items | length) > 0 and
+            .data.current.generators.items[0].circuit.state == "connected" and
+            .data.current.majorConsumers.state == "live" and
+            (.data.current.majorConsumers.items | length) > 0 and
             .freshness.history.state == "live" and
             (.data.history.series | length) > 0
           ' /tmp/power.json
@@ -135,7 +145,7 @@ jobs:
             echo "power stream must remain disabled by default" >&2
             exit 1
           fi
-          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|PROMETHEUS_SERVERS_JSON|urlLabel|sessionLabel|https?://' /tmp/servers.json /tmp/overview.json /tmp/power.json; then
+          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|PROMETHEUS_SERVERS_JSON|urlLabel|sessionLabel|ClassName|PowerProduction|RegulatedDemandProd|DynamicProd|fixture-|"location"|https?://' /tmp/servers.json /tmp/overview.json /tmp/power.json; then
             echo "public API leaked an internal configuration field" >&2
             exit 1
           fi
@@ -178,7 +188,7 @@ jobs:
           if [ "$GITHUB_REF" = "refs/heads/main" ]; then
             tags+=("${image}:latest")
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
             tags+=("${image}:${GITHUB_REF_NAME}")
           fi
 

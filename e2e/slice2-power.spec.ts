@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const privateTerms = /session_name|private-url|private-session|promql/i;
+const privateTerms = /session_name|private-url|private-session|promql|fixture-|classname|location/i;
 
 test.describe("Slice 2 Power", () => {
   test("renders current and retained power from the shared mock service", async ({ page }, testInfo) => {
@@ -15,8 +15,11 @@ test.describe("Slice 2 Power", () => {
     await expect(page.getByRole("table", { name: /power history series summary/i })).toBeVisible();
     await expect(page.getByRole("table", { name: /current power circuits/i })).toBeVisible();
     await expect(page.getByText(/historical production is not collected/i)).toBeVisible();
-    await expect(page.getByRole("heading", { name: /generator details unavailable/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /major-consumer details unavailable/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Generator details" })).toBeVisible();
+    await expect(page.getByText("Biomass Burner")).toBeVisible();
+    await expect(page.getByText(/biomass inventory 170 of 200/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Major consumers" })).toBeVisible();
+    await expect(page.getByText("Miner Mk.1")).toBeVisible();
     await expect(page.getByRole("status", { name: "Power refresh status" })).toContainText(
       /Polling (fallback|degraded)/
     );

@@ -8,6 +8,7 @@ import type {
 } from "@/domain/power";
 import {
   clearPowerServiceCachesForTests,
+  getCachedPowerCurrent,
   getCachedPowerEnvelope,
   getPowerEnvelope,
 } from "./power-service";
@@ -85,6 +86,23 @@ const historyProvider = (result: PowerHistoryResult | Error): PowerHistoryProvid
   }),
 });
 
+function detailedCurrentProvider(
+  generators: unknown[] | Error,
+  consumers: unknown[] | Error
+): PowerProvider {
+  return {
+    ...currentProvider(currentState()),
+    getGenerators: vi.fn(async () => {
+      if (generators instanceof Error) throw generators;
+      return generators;
+    }),
+    getMajorConsumers: vi.fn(async () => {
+      if (consumers instanceof Error) throw consumers;
+      return consumers;
+    }),
+  } as PowerProvider;
+}
+
 beforeEach(() => clearPowerServiceCachesForTests());
 
 describe("power service", () => {
@@ -121,6 +139,78 @@ describe("power service", () => {
     expect(envelope.data.current?.circuits[0]?.id).toBe("7");
     expect(envelope.data.history?.series[0]?.circuitId).toBe("7");
     expect(JSON.stringify(envelope)).not.toMatch(/productionMw|PowerProduction|promql|session_name|urlLabel/);
+  });
+
+  it("composes independently loaded generator and consumer details through the shared service", async () => {
+    const provider = detailedCurrentProvider(
+      [
+        {
+          name: "Biomass Burner",
+          circuit: { state: "disconnected", id: "-1" },
+          fuelType: "biomass",
+          fuelInventory: null,
+          productionCapacityMw: 20,
+          loadPercent: 0,
+          canStart: false,
+          fuseTriggered: false,
+        },
+      ],
+      [
+        {
+          name: "Miner Mk.1",
+          circuit: { state: "connected", id: "7" },
+          consumptionMw: 5,
+          maximumConsumptionMw: 5,
+          fuseTriggered: false,
+        },
+      ]
+    );
+
+    const envelope = await getPowerEnvelope(
+      "main",
+      provider,
+      historyProvider(historyResult()),
+      REQUEST,
+      () => NOW
+    );
+
+    expect(envelope.data.current?.generators).toMatchObject({
+      state: "live",
+      items: [{ circuit: { state: "disconnected", id: "-1" } }],
+    });
+    expect(envelope.data.current?.majorConsumers).toMatchObject({
+      state: "live",
+      items: [{ name: "Miner Mk.1", consumptionMw: 5 }],
+    });
+    expect(JSON.stringify(envelope)).not.toMatch(/PowerProduction|RegulatedDemandProd|location|fixture-/i);
+  });
+
+  it("degrades generator and consumer details independently without hiding current power", async () => {
+    const provider = detailedCurrentProvider(
+      new Error("private generator failure"),
+      [
+        {
+          name: "Miner Mk.1",
+          circuit: { state: "connected", id: "7" },
+          consumptionMw: 5,
+          maximumConsumptionMw: 5,
+          fuseTriggered: false,
+        },
+      ]
+    );
+
+    const envelope = await getPowerEnvelope(
+      "main",
+      provider,
+      historyProvider(historyResult()),
+      REQUEST,
+      () => NOW
+    );
+
+    expect(envelope.freshness.current.state).toBe("live");
+    expect(envelope.data.current?.generators).toEqual({ state: "unavailable", items: [] });
+    expect(envelope.data.current?.majorConsumers.state).toBe("live");
+    expect(JSON.stringify(envelope)).not.toContain("private generator failure");
   });
 
   it("keeps history live when current FRM fails", async () => {
@@ -208,6 +298,23 @@ describe("power service", () => {
     expect(envelope.data.current).not.toBeNull();
     expect(envelope.data.history).toBeNull();
     expect(envelope.unavailableSources).toEqual(["prometheus"]);
+  });
+
+  it("coalesces the shared current read used by Overview and the Power envelope", async () => {
+    const current = currentProvider(currentState());
+    const now = () => NOW;
+
+    const overviewRead = getCachedPowerCurrent("shared-current", current, NOW.getTime());
+    const powerRead = getCachedPowerEnvelope(
+      "shared-current",
+      current,
+      historyProvider(historyResult()),
+      REQUEST,
+      now
+    );
+
+    await Promise.all([overviewRead, powerRead]);
+    expect(current.getPower).toHaveBeenCalledTimes(1);
   });
 
   it("coalesces reads with separate current/history TTLs", async () => {

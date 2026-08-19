@@ -13,7 +13,18 @@ describe("provider factory", () => {
     expect(first).toEqual(second);
     expect(first.server.online).toBe(true);
     expect(first.players.online).toBeGreaterThan(0);
-    expect(first.power?.headroomMw).toBeGreaterThan(0);
+    const power = createPowerProviders(
+      config,
+      resolvePublicServer(config, "main")
+    ).current;
+    const current = await power.getPower();
+    expect(first.power).toEqual({
+      capacityMw: current.totals.capacityMw,
+      consumptionMw: current.totals.consumptionMw,
+      headroomMw: current.totals.headroomMw,
+      utilizationPercent: current.totals.utilizationPercent,
+      fuseTriggered: current.totals.fuseTriggered,
+    });
   });
 
   it("creates deterministic current and history providers in mock mode", async () => {

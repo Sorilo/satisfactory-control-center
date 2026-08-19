@@ -1,16 +1,17 @@
-# Deploy v0.1.0 on Unraid
+# Deploy v0.2.0-rc.1 on Unraid
 
-## Slice 1 release and Slice 2 candidate boundary
+## Slice 2 release-candidate boundary
 
-The published `v0.1.0` image is the Slice 1 foundation. The current Slice 2 candidate adds normalized current Power, fixed-query optional Prometheus history, and an opt-in bounded power-only SSE stream with HTTP polling fallback. It still does **not** include PostgreSQL history, persistence, the full map, or later data-rich views. Those remain in [`requirements-matrix.md`](requirements-matrix.md).
+`v0.2.0-rc.1` is the Slice 2 release candidate. It adds normalized current Power, strict bounded generator and major-consumer details from fixed FRM endpoints, fixed-query optional Prometheus history, independent detail/source degradation, and an opt-in bounded power-only SSE stream with HTTP polling fallback. It still does **not** include PostgreSQL history, persistence, the full map/location contract, or later data-rich views. Those remain in [`requirements-matrix.md`](requirements-matrix.md).
 
-Published images:
+Published images after the tag release gate succeeds:
 
 - `ghcr.io/sorilo/satisfactory-control-center:latest` — current default branch.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — Slice 1 release.
-- `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1` — Slice 2 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision and preferred RC validation pin.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — prior Slice 1 rollback release.
 
-Pin `v0.1.0` or a full SHA in production. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
+Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.1` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
 
 ## Authenticate and pull
 
@@ -18,8 +19,8 @@ The repository/package is private by default. Create a GitHub token with only `r
 
 ```bash
 echo "$GHCR_READ_TOKEN" | docker login ghcr.io --username Sorilo --password-stdin
-docker pull ghcr.io/sorilo/satisfactory-control-center:v0.1.0
-docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.1.0 \
+docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1
+docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1 \
   --format '{{.Config.User}} {{json .Config.Healthcheck.Test}}'
 ```
 
@@ -44,7 +45,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 
 | Variable | Required/default | Purpose |
 |---|---|---|
-| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` | Immutable image reference; a full Git SHA is preferred for maximum pinning. |
+| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
 | `CONTROL_CENTER_BIND` | `127.0.0.1` | Host bind address. Change only when the LAN/reverse-proxy design requires it. |
 | `CONTROL_CENTER_PORT` | `3000` | Host-side application port. |
 | `GAME_NETWORK` | `sorilonet` placeholder | Existing external network shared with Satisfactory/FRM; inspect and replace if different. |
@@ -85,7 +86,15 @@ curl --fail --silent http://127.0.0.1:3000/api/v1/servers | \
 curl --fail --silent 'http://127.0.0.1:3000/api/v1/overview?serverId=main' | \
   jq -e '.apiVersion == "v1" and .serverId == "main"'
 curl --fail --silent 'http://127.0.0.1:3000/api/v1/power?serverId=main&range=6h&resolution=auto' | \
-  jq -e '.apiVersion == "v1" and .serverId == "main" and .data.current != null'
+  jq -e '
+    .apiVersion == "v1" and .serverId == "main" and
+    .data.current != null and
+    (.data.current.generators.state == "live") and
+    (.data.current.generators.items | type == "array") and
+    (.data.current.majorConsumers.state == "live") and
+    (.data.current.majorConsumers.items | length <= 10) and
+    ([.. | objects | keys[]] | any(. == "location" or . == "ClassName" or . == "PowerProduction") | not)
+  '
 ```
 
 - `/api/health/live` proves the process serves HTTP and is appropriate for restart health.

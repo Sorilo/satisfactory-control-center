@@ -4,22 +4,26 @@ import {
   type PowerHistoryProvider,
   type PowerHistoryRequest,
   type PowerHistoryResult,
+  type PowerGenerator,
+  type PowerMajorConsumer,
   type PowerProvider,
 } from "@/domain/power";
 
 const OBSERVED_AT = "2026-08-18T18:00:00.000Z";
 
+export const MOCK_POWER_TOTALS = {
+  capacityMw: 8_500,
+  consumptionMw: 6_250,
+  reportedMaximumConsumptionMw: 7_100,
+  headroomMw: 2_250,
+  utilizationPercent: (6_250 / 8_500) * 100,
+  fuseTriggered: false,
+};
+
 const MOCK_CURRENT: PowerCurrentState = {
   topologyState: "available",
   observedAt: OBSERVED_AT,
-  totals: {
-    capacityMw: 8_500,
-    consumptionMw: 6_250,
-    reportedMaximumConsumptionMw: 7_100,
-    headroomMw: 2_250,
-    utilizationPercent: (6_250 / 8_500) * 100,
-    fuseTriggered: false,
-  },
+  totals: MOCK_POWER_TOTALS,
   circuits: [
     {
       id: "0",
@@ -40,9 +44,40 @@ const MOCK_CURRENT: PowerCurrentState = {
   ],
 };
 
+const MOCK_GENERATORS: PowerGenerator[] = [
+  {
+    name: "Biomass Burner",
+    circuit: { state: "connected", id: "0" },
+    fuelType: "biomass",
+    fuelInventory: { name: "Biomass", amount: 170, capacity: 200 },
+    productionCapacityMw: 20,
+    loadPercent: 25,
+    canStart: true,
+    fuseTriggered: false,
+  },
+];
+
+const MOCK_CONSUMERS: PowerMajorConsumer[] = [
+  {
+    name: "Miner Mk.1",
+    circuit: { state: "connected", id: "0" },
+    consumptionMw: 5,
+    maximumConsumptionMw: 5,
+    fuseTriggered: false,
+  },
+];
+
 export class MockPowerProvider implements PowerProvider {
   async getPower(): Promise<PowerCurrentState> {
     return structuredClone(MOCK_CURRENT);
+  }
+
+  async getGenerators(): Promise<PowerGenerator[]> {
+    return structuredClone(MOCK_GENERATORS);
+  }
+
+  async getMajorConsumers(): Promise<PowerMajorConsumer[]> {
+    return structuredClone(MOCK_CONSUMERS);
   }
 }
 

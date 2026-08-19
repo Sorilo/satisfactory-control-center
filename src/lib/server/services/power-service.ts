@@ -7,6 +7,8 @@ import type {
   PowerHistoryProvider,
   PowerHistoryRequest,
   PowerHistoryResult,
+  PowerGenerator,
+  PowerMajorConsumer,
   PowerProvider,
 } from "@/domain/power";
 
@@ -16,10 +18,14 @@ const MAX_CACHE_ENTRIES = 100;
 
 type CacheEntry<T> = { expiresAtMs: number; value: Promise<T> };
 const currentCache = new Map<string, CacheEntry<PowerCurrentState>>();
+const generatorCache = new Map<string, CacheEntry<PowerGenerator[]>>();
+const consumerCache = new Map<string, CacheEntry<PowerMajorConsumer[]>>();
 const historyCache = new Map<string, CacheEntry<PowerHistoryResult>>();
 
 export function clearPowerServiceCachesForTests(): void {
   currentCache.clear();
+  generatorCache.clear();
+  consumerCache.clear();
   historyCache.clear();
 }
 
@@ -31,10 +37,47 @@ export async function getPowerEnvelope(
   now: () => Date = () => new Date()
 ): Promise<PowerEnvelope> {
   const currentRead = currentProvider.getPower();
+  const generatorRead = currentProvider.getGenerators
+    ? currentProvider.getGenerators()
+    : Promise.reject(new SourceUnavailableError());
+  const consumerRead = currentProvider.getMajorConsumers
+    ? currentProvider.getMajorConsumers()
+    : Promise.reject(new SourceUnavailableError());
   const historyRead = historyProvider
     ? historyProvider.getHistory(request)
     : Promise.reject(new SourceUnavailableError());
-  return composePowerEnvelope(serverId, currentRead, historyRead, now);
+  return composePowerEnvelope(
+    serverId,
+    currentRead,
+    generatorRead,
+    consumerRead,
+    historyRead,
+    now
+  );
+}
+
+export function getCachedPowerCurrent(
+  serverId: string,
+  currentProvider: PowerProvider,
+  nowMs = Date.now()
+): Promise<PowerCurrentState> {
+  return readCached(
+    currentCache,
+    serverId,
+    nowMs,
+    CURRENT_CACHE_TTL_MS,
+    () => currentProvider.getPower()
+  );
+}
+
+export function powerSummaryFromCurrent(current: PowerCurrentState) {
+  return {
+    capacityMw: current.totals.capacityMw,
+    consumptionMw: current.totals.consumptionMw,
+    headroomMw: current.totals.headroomMw,
+    utilizationPercent: current.totals.utilizationPercent,
+    fuseTriggered: current.totals.fuseTriggered,
+  };
 }
 
 export async function getCachedPowerEnvelope(
@@ -45,13 +88,25 @@ export async function getCachedPowerEnvelope(
   now: () => Date = () => new Date()
 ): Promise<PowerEnvelope> {
   const nowMs = now().getTime();
-  const currentRead = readCached(
-    currentCache,
-    serverId,
-    nowMs,
-    CURRENT_CACHE_TTL_MS,
-    () => currentProvider.getPower()
-  );
+  const currentRead = getCachedPowerCurrent(serverId, currentProvider, nowMs);
+  const generatorRead = currentProvider.getGenerators
+    ? readCached(
+        generatorCache,
+        serverId,
+        nowMs,
+        CURRENT_CACHE_TTL_MS,
+        () => currentProvider.getGenerators!()
+      )
+    : Promise.reject(new SourceUnavailableError());
+  const consumerRead = currentProvider.getMajorConsumers
+    ? readCached(
+        consumerCache,
+        serverId,
+        nowMs,
+        CURRENT_CACHE_TTL_MS,
+        () => currentProvider.getMajorConsumers!()
+      )
+    : Promise.reject(new SourceUnavailableError());
   const historyRead = historyProvider
     ? readCached(
         historyCache,
@@ -61,21 +116,35 @@ export async function getCachedPowerEnvelope(
         () => historyProvider.getHistory(request)
       )
     : Promise.reject(new SourceUnavailableError());
-  return composePowerEnvelope(serverId, currentRead, historyRead, now);
+  return composePowerEnvelope(
+    serverId,
+    currentRead,
+    generatorRead,
+    consumerRead,
+    historyRead,
+    now
+  );
 }
 
 async function composePowerEnvelope(
   serverId: string,
   currentRead: Promise<PowerCurrentState>,
+  generatorRead: Promise<PowerGenerator[]>,
+  consumerRead: Promise<PowerMajorConsumer[]>,
   historyRead: Promise<PowerHistoryResult>,
   now: () => Date
 ): Promise<PowerEnvelope> {
   const generatedAt = now().toISOString();
-  const [currentResult, historyResult] = await Promise.allSettled([
-    currentRead,
-    historyRead,
-  ]);
+  const [currentResult, generatorResult, consumerResult, historyResult] =
+    await Promise.allSettled([
+      currentRead,
+      generatorRead,
+      consumerRead,
+      historyRead,
+    ]);
   const current = currentResult.status === "fulfilled" ? currentResult.value : null;
+  const generators = generatorResult.status === "fulfilled" ? generatorResult.value : null;
+  const majorConsumers = consumerResult.status === "fulfilled" ? consumerResult.value : null;
   const history = historyResult.status === "fulfilled" ? historyResult.value : null;
   const unavailableSources: Array<"frm" | "prometheus"> = [];
   if (current === null) unavailableSources.push("frm");
@@ -99,8 +168,12 @@ async function composePowerEnvelope(
             topologyState: current.topologyState,
             totals: current.totals,
             circuits: current.circuits,
-            generators: { state: "unavailable", items: [] },
-            majorConsumers: { state: "unavailable", items: [] },
+            generators: generators
+              ? { state: "live", items: generators }
+              : { state: "unavailable", items: [] },
+            majorConsumers: majorConsumers
+              ? { state: "live", items: majorConsumers }
+              : { state: "unavailable", items: [] },
           }
         : null,
       history: history

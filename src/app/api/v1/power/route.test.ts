@@ -47,8 +47,21 @@ describe("GET /api/v1/power", () => {
     const body = await response.json();
     expect(body.serverId).toBe("main");
     expect(body.data.history.coverage).toMatchObject({ requestedRange: "1h", effectiveResolution: "1m" });
-    expect(body.data.current.generators).toEqual({ state: "unavailable", items: [] });
-    expect(JSON.stringify(body)).not.toMatch(/productionMw|PowerProduction|promql|session_name|urlLabel/);
+    expect(body.data.current.generators).toMatchObject({
+      state: "live",
+      items: [{
+        circuit: { state: "connected", id: "0" },
+        fuelType: "biomass",
+        fuelInventory: { name: "Biomass", amount: 170, capacity: 200 },
+      }],
+    });
+    expect(body.data.current.majorConsumers).toMatchObject({
+      state: "live",
+      items: [{ name: "Miner Mk.1", consumptionMw: 5, maximumConsumptionMw: 5 }],
+    });
+    expect(JSON.stringify(body)).not.toMatch(
+      /productionMw|PowerProduction|RegulatedDemandProd|DynamicProd|promql|session_name|urlLabel|ClassName|location|fixture-/
+    );
   });
 
   it("accepts every allowlisted range/resolution combination", async () => {

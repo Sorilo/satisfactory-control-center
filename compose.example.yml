@@ -1,6 +1,6 @@
 services:
   control-center:
-    image: ${CONTROL_CENTER_IMAGE:-ghcr.io/sorilo/satisfactory-control-center:v0.1.0}
+    image: ${CONTROL_CENTER_IMAGE:-ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1}
     restart: unless-stopped
     init: true
     environment:

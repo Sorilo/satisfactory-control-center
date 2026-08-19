@@ -1,0 +1,67 @@
+[
+  {
+    "ID": "fixture-consumer-burner-disconnected-001",
+    "Name": "Biomass Burner",
+    "ClassName": "Build_GeneratorIntegratedBiomass_C",
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": -1,
+      "CircuitID": -1,
+      "FuseTriggered": false,
+      "PowerConsumed": 0,
+      "MaxPowerConsumed": 0
+    }
+  },
+  {
+    "ID": "fixture-consumer-burner-connected-002",
+    "Name": "Biomass Burner",
+    "ClassName": "Build_GeneratorIntegratedBiomass_C",
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 0,
+      "FuseTriggered": false,
+      "PowerConsumed": 0,
+      "MaxPowerConsumed": 0
+    }
+  },
+  {
+    "ID": "fixture-consumer-storage-003",
+    "Name": "Personal Storage Box",
+    "ClassName": "Build_StorageIntegrated_C",
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": -1,
+      "CircuitID": -1,
+      "FuseTriggered": false,
+      "PowerConsumed": 0,
+      "MaxPowerConsumed": 0
+    }
+  },
+  {
+    "ID": "fixture-consumer-hub-004",
+    "Name": "The HUB",
+    "ClassName": "Build_HUBTerminal_C",
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": -1,
+      "CircuitID": -1,
+      "FuseTriggered": false,
+      "PowerConsumed": 0,
+      "MaxPowerConsumed": 0
+    }
+  },
+  {
+    "ID": "fixture-consumer-miner-005",
+    "Name": "Miner Mk.1",
+    "ClassName": "Build_MinerMk1_C",
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 0,
+      "FuseTriggered": false,
+      "PowerConsumed": 5,
+      "MaxPowerConsumed": 5
+    }
+  }
+]

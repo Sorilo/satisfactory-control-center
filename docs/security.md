@@ -12,6 +12,7 @@ Public input is untrusted. Upstream services and credentials are server-only. Th
 - Public schemas are allowlists; raw upstream JSON is never returned.
 - Errors use public codes and never include stack traces or upstream details. Correlation IDs are Planned with structured logging.
 - Player position and inventory are omitted from the public overview contract and discarded by the adapter allowlist.
+- Power detail adapters validate fixed `/getGenerators` and `/getPowerUsage` subsets, then discard raw object IDs, class names, coordinates/orientation, inventory class identifiers, and unresolved production/demand fields. Public details contain only bounded operational fields; `-1` circuit membership remains an explicit disconnected state.
 - Application code does not log runtime configuration, request headers, upstream bodies, or secrets. A centralized structured logger/redactor is Planned.
 
 ## Threats and mitigations

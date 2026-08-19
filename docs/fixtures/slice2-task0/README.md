@@ -1,19 +1,9 @@
-# Slice 2 Task 0 sanitized fixtures
+# Slice 2 sanitized live fixtures
 
-These fixtures preserve the minimum non-secret evidence needed to bind Slice 2 planning and future adapter tests to the live deployment validation performed on 2026-08-18.
+These fixtures bind reviewed live field shapes without retaining private deployment data.
 
-- `frm-get-power-live.json`: populated live `/getPower` response.
-- `frm-get-power-no-circuits.json`: valid live response before a power circuit existed or was available.
-- `companion-power-metric-availability.json`: observed metrics versus source-documented but unobserved capability.
-- `prometheus-retention.json`: effective deployed TSDB retention flags.
-- `deployed-artifacts.json`: deployed container names and immutable local image IDs.
+- `frm-get-power-live.json` and `frm-get-power-no-circuits.json` preserve the approved aggregate Power evidence.
+- `frm-get-generators-live.json` is derived from two observed integrated Biomass Burners.
+- `frm-get-power-usage-live.json` is derived from observed generator, storage, HUB, and Miner records.
 
-The fixtures contain no internal URLs, IP addresses, hostnames, session/save names, Prometheus label values, credentials, or raw logs. Container image IDs bind tested artifacts but do not prove that the Satisfactory image's embedded FRM plugin equals the separately inspected upstream source commit.
-
-## Interpretation contract
-
-1. `frm-get-power-no-circuits.json` is a successful live state, not an outage.
-2. `PowerCapacity`, `PowerConsumed`, and `PowerMaxConsumed` are validated deployed fields.
-3. `PowerProduction` remains semantically unresolved and must not be presented as actual/current generation.
-4. Only the three `observedMetricNames` are promised for initial historical power queries.
-5. The configured history horizon is 15 days; actual per-series coverage can be shorter.
+All object IDs are explicitly synthetic `fixture-*` values. All coordinates and orientation values are replaced with zero. Internal URLs, credentials, session/save names, player data, geometry, colors, and other undeclared upstream fields are omitted. Adapter tests validate the reviewed subset and prove that IDs, class names, locations, unresolved production fields, and inventory class names never cross the public contract.

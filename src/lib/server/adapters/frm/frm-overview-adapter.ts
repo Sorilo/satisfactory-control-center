@@ -1,9 +1,6 @@
 import { z } from "zod";
 import type { FrmProvider, OverviewSnapshot } from "@/domain/overview";
 import {
-  normalizeFrmPowerPayload,
-} from "@/lib/server/adapters/frm/frm-power-adapter";
-import {
   parseUpstream,
   requestBoundedJson,
   UpstreamError,
@@ -17,8 +14,8 @@ export type { Fetcher };
  * FRM (Ficsit Remote Monitoring) overview adapter.
  *
  * Transport and mapping boundary: it talks only to reviewed read endpoints
- * (`getSessionInfo`, `getPlayer`, `getPower`, `getFactory`,
- * `getSpaceElevator`), enforces a timeout via `AbortSignal`, bounds response
+ * (`getSessionInfo`, `getPlayer`, `getFactory`, and `getSpaceElevator`),
+ * enforces a timeout via `AbortSignal`, bounds response
  * size via both the `content-length` header and the actual body bytes, and
  * validates every upstream payload with field-allowlisting Zod schemas before mapping into
  * normalized domain models. Private fields (player location/inventory and any
@@ -73,7 +70,6 @@ type SpaceElevator = z.infer<typeof spaceElevatorSchema>;
 type FrmReadEndpoint =
   | "getSessionInfo"
   | "getPlayer"
-  | "getPower"
   | "getFactory"
   | "getSpaceElevator";
 
@@ -96,11 +92,10 @@ export class FrmOverviewAdapter implements FrmProvider {
   }
 
   async getOverview(): Promise<OverviewSnapshot> {
-    const [sessionRaw, playersRaw, powerRaw, factoryRaw, spaceElevatorRaw] =
+    const [sessionRaw, playersRaw, factoryRaw, spaceElevatorRaw] =
       await Promise.all([
         this.request("getSessionInfo"),
         this.request("getPlayer"),
-        this.request("getPower"),
         this.request("getFactory"),
         this.request("getSpaceElevator"),
       ]);
@@ -112,7 +107,6 @@ export class FrmOverviewAdapter implements FrmProvider {
 
     const onlinePlayers = players.filter((player) => player.Online);
     const observedAt = new Date().toISOString();
-    const powerState = normalizeFrmPowerPayload(powerRaw, observedAt);
 
     return {
       observedAt,
@@ -126,16 +120,7 @@ export class FrmOverviewAdapter implements FrmProvider {
         online: onlinePlayers.length,
         names: onlinePlayers.map((player) => player.Name),
       },
-      power:
-        powerState.topologyState === "no-circuits"
-          ? null
-          : {
-              capacityMw: powerState.totals.capacityMw,
-              consumptionMw: powerState.totals.consumptionMw,
-              headroomMw: powerState.totals.headroomMw,
-              utilizationPercent: powerState.totals.utilizationPercent,
-              fuseTriggered: powerState.totals.fuseTriggered,
-            },
+      power: null,
       factory: this.normalizeFactory(factories),
       progress: this.normalizeProgress(elevators),
     };

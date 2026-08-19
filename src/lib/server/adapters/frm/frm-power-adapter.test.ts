@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import generatorsFixture from "../../../../../docs/fixtures/slice2-task0/frm-get-generators-live.json";
 import liveFixture from "../../../../../docs/fixtures/slice2-task0/frm-get-power-live.json";
 import noCircuitsFixture from "../../../../../docs/fixtures/slice2-task0/frm-get-power-no-circuits.json";
+import powerUsageFixture from "../../../../../docs/fixtures/slice2-task0/frm-get-power-usage-live.json";
 import { FrmPowerAdapter } from "./frm-power-adapter";
 
 const jsonResponse = (value: unknown) => {
@@ -152,5 +154,156 @@ describe("FRM power adapter", () => {
     await expect(adapter.getPower()).rejects.toMatchObject({
       code: "UPSTREAM_RESPONSE_TOO_LARGE",
     });
+    await expect(adapter.getGenerators()).rejects.toMatchObject({
+      code: "UPSTREAM_RESPONSE_TOO_LARGE",
+    });
+    await expect(adapter.getMajorConsumers()).rejects.toMatchObject({
+      code: "UPSTREAM_RESPONSE_TOO_LARGE",
+    });
+  });
+
+  it("normalizes the sanitized generator fixture without raw identity, location, or production fields", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(new URL(String(input)).pathname).toBe("/getGenerators");
+      expect(new Headers(init?.headers).get("X-FRM-Authorization")).toBe("read-token");
+      return jsonResponse(generatorsFixture);
+    });
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      token: "read-token",
+      fetcher,
+    });
+
+    const generators = await adapter.getGenerators();
+
+    expect(generators).toEqual([
+      {
+        name: "Biomass Burner",
+        circuit: { state: "connected", id: "0" },
+        fuelType: "biomass",
+        fuelInventory: { name: "Biomass", amount: 170, capacity: 200 },
+        productionCapacityMw: 20,
+        loadPercent: 25,
+        canStart: true,
+        fuseTriggered: false,
+      },
+      {
+        name: "Biomass Burner",
+        circuit: { state: "disconnected", id: "-1" },
+        fuelType: "biomass",
+        fuelInventory: null,
+        productionCapacityMw: 20,
+        loadPercent: 0,
+        canStart: false,
+        fuseTriggered: false,
+      },
+    ]);
+    expect(JSON.stringify(generators)).not.toMatch(
+      /fixture-|Build_|location|ClassName|PowerProduction|RegulatedDemandProd|DynamicProd/i
+    );
+  });
+
+  it("sorts generators deterministically and caps the public list at one hundred", async () => {
+    const records = Array.from({ length: 101 }, (_, index) => ({
+      ...generatorsFixture[0],
+      ID: `fixture-generator-${String(index).padStart(3, "0")}`,
+      Name: `Generator ${String(100 - index).padStart(3, "0")}`,
+    }));
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async () => jsonResponse(records),
+    });
+
+    const generators = await adapter.getGenerators();
+
+    expect(generators).toHaveLength(100);
+    expect(generators[0]?.name).toBe("Generator 000");
+    expect(generators[99]?.name).toBe("Generator 099");
+  });
+
+  it("ranks meaningful consumers first, retains connected zero draw, and omits disconnected zero-only structures", async () => {
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async (input) => {
+        expect(new URL(String(input)).pathname).toBe("/getPowerUsage");
+        return jsonResponse(powerUsageFixture);
+      },
+    });
+
+    const consumers = await adapter.getMajorConsumers();
+
+    expect(consumers).toEqual([
+      {
+        name: "Miner Mk.1",
+        circuit: { state: "connected", id: "0" },
+        consumptionMw: 5,
+        maximumConsumptionMw: 5,
+        fuseTriggered: false,
+      },
+      {
+        name: "Biomass Burner",
+        circuit: { state: "connected", id: "0" },
+        consumptionMw: 0,
+        maximumConsumptionMw: 0,
+        fuseTriggered: false,
+      },
+    ]);
+    expect(JSON.stringify(consumers)).not.toMatch(/fixture-|Build_|location|ClassName/i);
+  });
+
+  it("uses environment-independent code-point ordering for equivalent consumer rankings", async () => {
+    const records = [
+      { ...powerUsageFixture[4], ID: "fixture-alpha", Name: "alpha" },
+      { ...powerUsageFixture[4], ID: "fixture-zulu", Name: "Zulu" },
+    ];
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async () => jsonResponse(records),
+    });
+
+    const consumers = await adapter.getMajorConsumers();
+
+    expect(consumers.map((item) => item.name)).toEqual(["Zulu", "alpha"]);
+  });
+
+  it("sorts consumer ties deterministically and caps the public ranking at ten", async () => {
+    const records = Array.from({ length: 12 }, (_, index) => ({
+      ...powerUsageFixture[4],
+      ID: `fixture-tie-${String(index).padStart(2, "0")}`,
+      Name: `Consumer ${String(11 - index).padStart(2, "0")}`,
+    }));
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async () => jsonResponse(records),
+    });
+
+    const consumers = await adapter.getMajorConsumers();
+
+    expect(consumers).toHaveLength(10);
+    expect(consumers.map((item) => item.name)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `Consumer ${String(index).padStart(2, "0")}`)
+    );
+  });
+
+  it("rejects malformed generator and consumer detail payloads instead of guessing", async () => {
+    const malformedPayloads: Array<{
+      method: "getGenerators" | "getMajorConsumers";
+      payload: unknown;
+    }> = [
+      { method: "getGenerators", payload: [{ ...generatorsFixture[0], LoadPercentage: 101 }] },
+      { method: "getGenerators", payload: [{ ...generatorsFixture[0], PowerInfo: { ...generatorsFixture[0]!.PowerInfo, CircuitGroupID: -2 } }] },
+      { method: "getMajorConsumers", payload: [{ ...powerUsageFixture[4], PowerInfo: { ...powerUsageFixture[4]!.PowerInfo, PowerConsumed: -1 } }] },
+      { method: "getMajorConsumers", payload: { not: "an-array" } },
+    ];
+
+    for (const { method, payload } of malformedPayloads) {
+      const adapter = new FrmPowerAdapter({
+        baseUrl: "http://frm:8080",
+        fetcher: async () => jsonResponse(payload),
+      });
+      await expect(adapter[method]()).rejects.toMatchObject({
+        code: "UPSTREAM_SCHEMA_INVALID",
+      });
+    }
   });
 });
