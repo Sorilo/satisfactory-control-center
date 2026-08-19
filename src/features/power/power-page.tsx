@@ -50,7 +50,12 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
         providers.history,
         historyRequest
       );
-      return { envelope, dataMode: config.dataMode };
+      return {
+        envelope,
+        dataMode: config.dataMode,
+        powerStreamEnabled: config.powerStreamEnabled,
+        historyRequest,
+      };
     } catch {
       return null;
     }
@@ -66,5 +71,13 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
     );
   }
 
-  return <PowerDashboard envelope={loaded.envelope} dataMode={loaded.dataMode} />;
+  return (
+    <PowerDashboard
+      envelope={loaded.envelope}
+      dataMode={loaded.dataMode}
+      streamEnabled={loaded.powerStreamEnabled}
+      selectedRange={loaded.historyRequest.range}
+      selectedResolution={loaded.historyRequest.resolution}
+    />
+  );
 }

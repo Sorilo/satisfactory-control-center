@@ -1,9 +1,23 @@
-import type { PowerEnvelope } from "@/contracts/power-contracts";
-import type { PowerHistorySeries } from "@/domain/power";
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  powerEnvelopeSchema,
+  powerStreamSnapshotSchema,
+  type PowerEnvelope,
+} from "@/contracts/power-contracts";
+import type {
+  PowerHistoryRange,
+  PowerHistoryResolution,
+  PowerHistorySeries,
+} from "@/domain/power";
 
 export interface PowerDashboardProps {
   envelope: PowerEnvelope;
   dataMode: "mock" | "live";
+  streamEnabled?: boolean;
+  selectedRange?: PowerHistoryRange;
+  selectedResolution?: PowerHistoryResolution;
 }
 
 const RANGES = ["1h", "6h", "24h", "7d", "15d"] as const;
@@ -51,21 +65,137 @@ export function PowerDashboardLoading() {
   );
 }
 
-export function PowerDashboard({ envelope, dataMode }: PowerDashboardProps) {
-  const current = envelope.data.current;
+export function PowerDashboard({
+  envelope,
+  dataMode,
+  streamEnabled,
+  selectedRange,
+  selectedResolution,
+}: PowerDashboardProps) {
+  const [current, setCurrent] = useState(envelope.data.current);
+  const [refreshStatus, setRefreshStatus] = useState(
+    streamEnabled === true
+      ? "Connecting realtime"
+      : streamEnabled === false
+        ? "Polling fallback"
+        : "Server snapshot"
+  );
   const history = envelope.data.history;
-  const requestedRange = history?.coverage.requestedRange ?? "1h";
+  const requestedRange = selectedRange ?? history?.coverage.requestedRange ?? "1h";
+  const requestedResolution = selectedResolution ?? "auto";
   const effectiveResolution = history?.coverage.effectiveResolution ?? "1m";
   const chartPaths = historyPaths(history?.series ?? []);
   const historyPointCount = history?.series.reduce((count, item) => count + item.points.length, 0) ?? 0;
+
+  useEffect(() => {
+    if (streamEnabled === undefined) return;
+
+    let disposed = false;
+    let source: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let failures = 0;
+
+    const pollingUrl = `/api/v1/power?serverId=${encodeURIComponent(envelope.serverId)}&range=${requestedRange}&resolution=${requestedResolution}`;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(pollingUrl, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("power refresh unavailable");
+        const refreshed = powerEnvelopeSchema.parse(await response.json());
+        if (refreshed.serverId !== envelope.serverId) {
+          throw new Error("power refresh server mismatch");
+        }
+        if (!disposed && refreshed.data.current) {
+          setCurrent(refreshed.data.current);
+          setRefreshStatus("Polling fallback");
+        }
+      } catch {
+        if (!disposed) setRefreshStatus("Polling degraded");
+      }
+    };
+
+    const startPolling = () => {
+      source?.close();
+      source = null;
+      if (pollTimer !== null) return;
+      void poll();
+      pollTimer = setInterval(() => void poll(), 15_000);
+    };
+
+    const connect = () => {
+      if (disposed || typeof EventSource === "undefined") {
+        startPolling();
+        return;
+      }
+      const candidate = new EventSource(
+        `/api/v1/power/stream?serverId=${encodeURIComponent(envelope.serverId)}`
+      );
+      source = candidate;
+      candidate.onopen = () => {
+        if (disposed || source !== candidate) return;
+        failures = 0;
+        setRefreshStatus("Realtime live");
+      };
+      const fail = () => {
+        if (disposed || source !== candidate) return;
+        candidate.close();
+        source = null;
+        failures += 1;
+        if (failures >= 3) {
+          startPolling();
+          return;
+        }
+        setRefreshStatus(`Reconnecting realtime (${failures}/3)`);
+        const delayMs = Math.min(1_000 * 2 ** (failures - 1), 5_000);
+        reconnectTimer = setTimeout(connect, delayMs);
+      };
+      candidate.onerror = fail;
+      candidate.addEventListener("power", (event) => {
+        try {
+          const message = event as MessageEvent<string>;
+          const snapshot = powerStreamSnapshotSchema.parse(JSON.parse(message.data));
+          if (disposed || source !== candidate) return;
+          setCurrent((previous) => ({
+            topologyState: snapshot.topologyState,
+            totals: snapshot.totals,
+            circuits: snapshot.circuits,
+            generators: previous?.generators ?? { state: "unavailable", items: [] },
+            majorConsumers: previous?.majorConsumers ?? { state: "unavailable", items: [] },
+          }));
+          setRefreshStatus("Realtime live");
+        } catch {
+          fail();
+        }
+      });
+    };
+
+    if (streamEnabled) connect();
+    else startPolling();
+
+    return () => {
+      disposed = true;
+      source?.close();
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      if (pollTimer !== null) clearInterval(pollTimer);
+    };
+  }, [
+    envelope.serverId,
+    requestedRange,
+    requestedResolution,
+    streamEnabled,
+  ]);
   const badge = dataMode === "mock" ? "Mock telemetry" :
     envelope.freshness.current.state === "unavailable" || envelope.freshness.history.state === "unavailable" ? "Degraded telemetry" : "Live telemetry";
 
   const coverageMessage = history?.coverage.state === "partial"
-    ? `Partial retained coverage · oldest sample ${history.coverage.oldestSampleAt ? new Date(history.coverage.oldestSampleAt).toLocaleString("en-US", { timeZone: "UTC" }) : "unknown"} UTC`
+    ? `Partial retained coverage · ${effectiveResolution} buckets · oldest sample ${history.coverage.oldestSampleAt ? new Date(history.coverage.oldestSampleAt).toLocaleString("en-US", { timeZone: "UTC" }) : "unknown"} UTC`
     : history?.coverage.state === "empty"
-      ? "No retained samples in this range"
-      : history ? "Complete retained coverage" : null;
+      ? `No retained samples in this range · ${effectiveResolution} buckets`
+      : history ? `Complete retained coverage · ${effectiveResolution} buckets` : null;
 
   return (
     <div className="power-stack">
@@ -78,6 +208,7 @@ export function PowerDashboard({ envelope, dataMode }: PowerDashboardProps) {
         <div className="page-header__meta">
           <span className={`status-badge ${dataMode === "mock" ? "status-badge--mock" : "status-badge--live"}`}>{badge}</span>
           <small>Current {envelope.freshness.current.state} · History {envelope.freshness.history.state}</small>
+          <small role="status" aria-label="Power refresh status">{refreshStatus}</small>
         </div>
       </header>
 
@@ -117,21 +248,21 @@ export function PowerDashboard({ envelope, dataMode }: PowerDashboardProps) {
         <div className="power-controls" aria-label="Power history controls">
           <div className="power-range" aria-label="History range">
             {RANGES.map((range) => (
-              <a key={range} aria-current={requestedRange === range ? "page" : undefined} href={`?serverId=${encodeURIComponent(envelope.serverId)}&range=${range}&resolution=${effectiveResolution}`}>{range}</a>
+              <a key={range} aria-current={requestedRange === range ? "page" : undefined} href={`?serverId=${encodeURIComponent(envelope.serverId)}&range=${range}&resolution=${requestedResolution}`}>{range}</a>
             ))}
           </div>
           <form method="get" className="power-resolution">
             <input type="hidden" name="serverId" value={envelope.serverId} />
             <input type="hidden" name="range" value={requestedRange} />
             <label htmlFor="power-resolution">Resolution</label>
-            <select id="power-resolution" name="resolution" defaultValue={effectiveResolution}>
+            <select id="power-resolution" name="resolution" defaultValue={requestedResolution}>
               {RESOLUTIONS.map((resolution) => <option key={resolution} value={resolution}>{resolution}</option>)}
             </select>
             <button type="submit">Apply</button>
           </form>
         </div>
         {!history ? (
-          <div className="power-chart-empty"><h2>Power history unavailable</h2><p>Current FRM data remains independent and visible above.</p></div>
+          <div className="power-chart-empty"><h2>Power history unavailable</h2><p>Historical source unavailable. Current FRM data remains independent and visible above.</p></div>
         ) : historyPointCount > 0 ? (
           <>
             {chartPaths.length ? <>

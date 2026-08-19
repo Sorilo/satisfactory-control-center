@@ -17,6 +17,9 @@ test.describe("Slice 2 Power", () => {
     await expect(page.getByText(/historical production is not collected/i)).toBeVisible();
     await expect(page.getByRole("heading", { name: /generator details unavailable/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /major-consumer details unavailable/i })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Power refresh status" })).toContainText(
+      /Polling (fallback|degraded)/
+    );
 
     await page.getByRole("link", { name: "7d", exact: true }).click();
     await expect(page).toHaveURL(/\/power\?.*range=7d/);

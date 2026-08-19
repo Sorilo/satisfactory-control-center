@@ -29,6 +29,7 @@ export interface RuntimeConfig {
   servers: ServerConfig[];
   prometheusServers: PrometheusServerConfig[];
   trustProxyHeaders: boolean;
+  powerStreamEnabled: boolean;
 }
 
 export type RuntimeEnv = Record<string, string | undefined>;
@@ -163,6 +164,10 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
   if (trustProxyHeadersRaw !== "true" && trustProxyHeadersRaw !== "false") {
     throw new ConfigError("TRUST_PROXY_HEADERS must be 'true' or 'false'");
   }
+  const powerStreamEnabledRaw = env.POWER_STREAM_ENABLED ?? "false";
+  if (powerStreamEnabledRaw !== "true" && powerStreamEnabledRaw !== "false") {
+    throw new ConfigError("POWER_STREAM_ENABLED must be 'true' or 'false'");
+  }
   const defaultServerId = env.DEFAULT_SERVER_ID ?? "main";
   if (!opaqueIdSchema.safeParse(defaultServerId).success) {
     throw new ConfigError("DEFAULT_SERVER_ID must be a bounded opaque identifier");
@@ -201,6 +206,7 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
     servers,
     prometheusServers: parsePrometheusServersJson(env.PROMETHEUS_SERVERS_JSON),
     trustProxyHeaders: trustProxyHeadersRaw === "true",
+    powerStreamEnabled: powerStreamEnabledRaw === "true",
   });
 }
 

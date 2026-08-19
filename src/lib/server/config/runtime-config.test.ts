@@ -9,6 +9,17 @@ describe("runtime configuration", () => {
     expect(getPublicServerCatalog(config)).toEqual([{ id: "main", displayName: "Main World" }]);
   });
 
+  it("keeps the power stream disabled unless explicitly enabled", () => {
+    expect(parseRuntimeConfig({ DATA_MODE: "mock" }).powerStreamEnabled).toBe(false);
+    expect(
+      parseRuntimeConfig({ DATA_MODE: "mock", POWER_STREAM_ENABLED: "true" })
+        .powerStreamEnabled
+    ).toBe(true);
+    expect(() =>
+      parseRuntimeConfig({ DATA_MODE: "mock", POWER_STREAM_ENABLED: "yes" })
+    ).toThrow(/POWER_STREAM_ENABLED/);
+  });
+
   it("projects public metadata without internal URLs or tokens", () => {
     const config = parseRuntimeConfig({
       DATA_MODE: "live",
