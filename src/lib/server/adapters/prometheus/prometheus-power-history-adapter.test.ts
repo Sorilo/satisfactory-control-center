@@ -190,6 +190,34 @@ describe("Prometheus power history adapter", () => {
     await expect(adapter(fetcher as typeof fetch).getHistory({ range: "1h", resolution: "1m" })).rejects.toMatchObject({ code: "UPSTREAM_SCHEMA_INVALID" });
   });
 
+  it("calculates coverage for a bounded 99-series response without overflowing arguments", async () => {
+    const values = Array.from({ length: 1_420 }, (_, index) => [index, "1"] as [number, string]);
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const query = new URL(String(input)).searchParams.get("query") ?? "";
+      const metric = Object.keys(METRIC_TO_KEY).find((name) => query.startsWith(`${name}{`))!;
+      const base = matrix(metric, values).data.result[0]!;
+      return response({
+        status: "success",
+        data: {
+          resultType: "matrix",
+          result: Array.from({ length: 33 }, (_, circuitId) => ({
+            ...base,
+            metric: { ...base.metric, circuit_id: String(circuitId + 1) },
+          })),
+        },
+      });
+    });
+
+    const result = await adapter(fetcher as typeof fetch).getHistory({
+      range: "15d",
+      resolution: "15m",
+    });
+
+    expect(result.series).toHaveLength(99);
+    expect(result.coverage.oldestSampleAt).toBe("1970-01-01T00:00:00.000Z");
+    expect(result.coverage.newestSampleAt).toBe("1970-01-01T00:23:39.000Z");
+  });
+
   it("rejects Prometheus warnings/errors and bounded transport failures", async () => {
     for (const invalid of [
       { status: "error", errorType: "bad_data", error: "private query" },

@@ -93,8 +93,18 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
     }
     series.sort(compareSeries);
 
-    const allPoints = series.flatMap((item) => item.points);
-    if (allPoints.length === 0) {
+    let pointCount = 0;
+    let oldestMs = Number.POSITIVE_INFINITY;
+    let newestMs = Number.NEGATIVE_INFINITY;
+    for (const item of series) {
+      for (const point of item.points) {
+        const timestamp = Date.parse(point.timestamp);
+        pointCount += 1;
+        oldestMs = Math.min(oldestMs, timestamp);
+        newestMs = Math.max(newestMs, timestamp);
+      }
+    }
+    if (pointCount === 0) {
       return {
         observedAt: null,
         coverage: {
@@ -109,9 +119,6 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
       };
     }
 
-    const timestamps = allPoints.map((point) => Date.parse(point.timestamp));
-    const oldestMs = Math.min(...timestamps);
-    const newestMs = Math.max(...timestamps);
     const stepMs = STEP_SECONDS[effective] * 1000;
     const complete =
       new Set(series.map((item) => item.key)).size === QUERY_SPECS.length &&
