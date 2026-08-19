@@ -16,10 +16,18 @@ export interface PublicServerEntry {
   displayName: string;
 }
 
+export interface PrometheusServerConfig {
+  serverId: string;
+  baseUrl: string;
+  urlLabel: string;
+  sessionLabel: string;
+}
+
 export interface RuntimeConfig {
   dataMode: DataMode;
   defaultServerId: string;
   servers: ServerConfig[];
+  prometheusServers: PrometheusServerConfig[];
   trustProxyHeaders: boolean;
 }
 
@@ -46,16 +54,44 @@ const serverEntrySchema = z.object({
   public: z.boolean().optional(),
 }).strict();
 
-function assertSafeHttpUrl(raw: string): void {
+const prometheusServerEntrySchema = z.object({
+  serverId: opaqueIdSchema,
+  baseUrl: z.string().trim().min(1),
+  urlLabel: z.string().trim().min(1).max(256),
+  sessionLabel: z.string().trim().min(1).max(256),
+}).strict();
+
+function assertSafeHttpUrl(raw: string, source = "FRM"): void {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    throw new ConfigError("FRM URL must be a valid HTTP(S) URL");
+    throw new ConfigError(`${source} URL must be a valid HTTP(S) URL`);
   }
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
-    throw new ConfigError("FRM URL must be a valid HTTP(S) URL without embedded credentials");
+    throw new ConfigError(`${source} URL must be a valid HTTP(S) URL without embedded credentials`);
   }
+}
+
+function parsePrometheusServersJson(raw: string | undefined): PrometheusServerConfig[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ConfigError("PROMETHEUS_SERVERS_JSON is not valid JSON");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new ConfigError("PROMETHEUS_SERVERS_JSON must be a JSON array");
+  }
+  return parsed.map((entry) => {
+    const result = prometheusServerEntrySchema.safeParse(entry);
+    if (!result.success) {
+      throw new ConfigError("PROMETHEUS_SERVERS_JSON contains an invalid entry");
+    }
+    assertSafeHttpUrl(result.data.baseUrl, "Prometheus");
+    return result.data;
+  });
 }
 
 function parseServersJson(raw: string): ServerConfig[] {
@@ -97,6 +133,17 @@ function validateRegistry(config: RuntimeConfig): RuntimeConfig {
       }
       assertSafeHttpUrl(server.frmBaseUrl);
     }
+  }
+
+  const prometheusIds = new Set<string>();
+  for (const prometheus of config.prometheusServers) {
+    if (!ids.has(prometheus.serverId)) {
+      throw new ConfigError("PROMETHEUS_SERVERS_JSON references an unknown server id");
+    }
+    if (prometheusIds.has(prometheus.serverId)) {
+      throw new ConfigError("PROMETHEUS_SERVERS_JSON contains a duplicate server id");
+    }
+    prometheusIds.add(prometheus.serverId);
   }
 
   const defaultServer = config.servers.find((server) => server.id === config.defaultServerId);
@@ -152,6 +199,7 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
     dataMode,
     defaultServerId,
     servers,
+    prometheusServers: parsePrometheusServersJson(env.PROMETHEUS_SERVERS_JSON),
     trustProxyHeaders: trustProxyHeadersRaw === "true",
   });
 }

@@ -65,4 +65,80 @@ describe("runtime configuration", () => {
     ]);
     expect(() => parseRuntimeConfig({ DATA_MODE: "live", DEFAULT_SERVER_ID: "../../admin", SERVERS_JSON: invalidId })).toThrow(/opaque|server entry/i);
   });
+
+  it("accepts optional Prometheus mappings joined to existing server IDs", () => {
+    const config = parseRuntimeConfig({
+      DATA_MODE: "live",
+      SERVERS_JSON: JSON.stringify([
+        { id: "main", displayName: "Main", frmBaseUrl: "http://frm:8080" },
+        { id: "beta", displayName: "Beta", frmBaseUrl: "http://beta-frm:8080" },
+      ]),
+      PROMETHEUS_SERVERS_JSON: JSON.stringify([
+        {
+          serverId: "main",
+          baseUrl: "http://prometheus:9090",
+          urlLabel: "main.internal:7777",
+          sessionLabel: "main-save",
+        },
+      ]),
+    });
+    expect(config.prometheusServers).toEqual([
+      {
+        serverId: "main",
+        baseUrl: "http://prometheus:9090",
+        urlLabel: "main.internal:7777",
+        sessionLabel: "main-save",
+      },
+    ]);
+    expect(config.prometheusServers.find((entry) => entry.serverId === "beta")).toBeUndefined();
+    expect(JSON.stringify(getPublicServerCatalog(config))).not.toMatch(
+      /prometheus|9090|main\.internal|main-save|urlLabel|sessionLabel/
+    );
+  });
+
+  it("keeps Prometheus optional in both mock and live modes", () => {
+    expect(parseRuntimeConfig({ DATA_MODE: "mock" }).prometheusServers).toEqual([]);
+    expect(
+      parseRuntimeConfig({ DATA_MODE: "live", FRM_BASE_URL: "http://frm:8080" })
+        .prometheusServers
+    ).toEqual([]);
+  });
+
+  it("rejects malformed, duplicate, credentialed, and unknown Prometheus mappings", () => {
+    const servers = JSON.stringify([
+      { id: "main", displayName: "Main", frmBaseUrl: "http://frm:8080" },
+    ]);
+    const parsePrometheus = (entries: unknown[]) =>
+      parseRuntimeConfig({
+        DATA_MODE: "live",
+        SERVERS_JSON: servers,
+        PROMETHEUS_SERVERS_JSON: JSON.stringify(entries),
+      });
+    const valid = {
+      serverId: "main",
+      baseUrl: "http://prometheus:9090",
+      urlLabel: "main.internal:7777",
+      sessionLabel: "main-save",
+    };
+
+    expect(() => parsePrometheus([{ ...valid, serverId: "unknown" }])).toThrow(/unknown/i);
+    expect(() => parsePrometheus([valid, valid])).toThrow(/duplicate/i);
+    expect(() => parsePrometheus([{ ...valid, baseUrl: "file:///etc/passwd" }])).toThrow(/URL/i);
+    expect(() => parsePrometheus([{ ...valid, baseUrl: "http://user:pass@prometheus:9090" }])).toThrow(/URL/i);
+    expect(() => parsePrometheus([{ ...valid, token: "secret" }])).toThrow(/invalid|entry/i);
+    expect(() =>
+      parseRuntimeConfig({
+        DATA_MODE: "live",
+        SERVERS_JSON: servers,
+        PROMETHEUS_SERVERS_JSON: "not-json",
+      })
+    ).toThrow(/PROMETHEUS_SERVERS_JSON/);
+    expect(() =>
+      parseRuntimeConfig({
+        DATA_MODE: "live",
+        SERVERS_JSON: servers,
+        PROMETHEUS_SERVERS_JSON: JSON.stringify({ serverId: "main" }),
+      })
+    ).toThrow(/array/i);
+  });
 });

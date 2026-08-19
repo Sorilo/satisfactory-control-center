@@ -54,9 +54,12 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 | `FRM_BASE_URL` | Required for single-server live mode | Server-only HTTP(S) FRM base URL using its Docker-network alias. |
 | `FRM_TOKEN` | Optional | Server-only FRM read token; never place it in the image or repository. |
 | `SERVERS_JSON` | Optional alternative to single-server fields | Multi-server registry with unique opaque IDs and server-only URLs/tokens. |
+| `PROMETHEUS_SERVERS_JSON` | Optional; defaults to no history source | Separate strict array of `{serverId,baseUrl,urlLabel,sessionLabel}` mappings. Each `serverId` must already exist in the FRM registry. Values remain server-only. |
 | `TRUST_PROXY_HEADERS` | `false` | Enable only behind a trusted proxy that overwrites forwarded-client headers. |
 
 For live mode, provide either one `FRM_BASE_URL` plus optional `FRM_TOKEN`, or `SERVERS_JSON`. Enabled live entries require HTTP(S) URLs without embedded credentials. The public server catalog exposes only `id` and `displayName`.
+
+Prometheus history is independently optional. `PROMETHEUS_SERVERS_JSON` does not alter `SERVERS_JSON`; unknown or duplicate server references, unknown keys, non-HTTP(S) URLs, and embedded URL credentials fail configuration validation. The configured `baseUrl` must be reachable through a network attached by the site-specific deployment. Do not expose Prometheus publicly merely to satisfy this connection.
 
 ## Start in mock mode
 
@@ -69,7 +72,7 @@ docker compose --env-file /path/outside/repo/control-center.env \
   -f compose.example.yml ps
 ```
 
-The Compose contract adds a read-only root filesystem, bounded `/tmp` tmpfs, dropped capabilities, `no-new-privileges`, PID/memory bounds, and only the external game network.
+The Compose contract adds a read-only root filesystem, bounded `/tmp` tmpfs, dropped capabilities, `no-new-privileges`, PID/memory bounds, and only the external game network. If Prometheus is not reachable on that network, add the existing private monitoring network in an Unraid-managed Compose override only when enabling history; do not require it for mock/current-only rollback.
 
 ## Verify liveness, readiness, and API contracts
 
@@ -119,3 +122,5 @@ Never paste environment dumps, tokens, or raw credentials into support channels.
 ## Rollback
 
 Keep the previous known-good image tag and external environment file. Roll back by setting `CONTROL_CENTER_IMAGE` to the prior immutable tag and recreating only this service. Slice 1 owns no database migration or persistent application volume.
+
+For a current-only rollback, remove `PROMETHEUS_SERVERS_JSON` (and any site-specific monitoring-network override) while retaining the unchanged FRM `SERVERS_JSON`. No data migration or application volume is involved.
