@@ -24,9 +24,10 @@ export interface PlayersSummary {
 }
 
 export interface PowerSummary {
-  productionMw: number;
+  capacityMw: number;
   consumptionMw: number;
   headroomMw: number;
+  utilizationPercent: number | null;
   fuseTriggered: boolean;
 }
 

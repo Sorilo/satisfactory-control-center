@@ -76,18 +76,25 @@ export class FrmPowerAdapter implements PowerProvider {
       maxResponseBytes: this.maxResponseBytes,
       timeoutMs: this.timeoutMs,
     });
-    const observedAt = this.now().toISOString();
-    const circuits = parseUpstream(z.array(powerCircuitSchema).max(100), raw);
-    if (circuits.length === 0) return buildNoCircuitsState(observedAt);
-
-    const normalized = sortPowerCircuits(circuits.map(normalizeCircuit));
-    return {
-      topologyState: "available",
-      observedAt,
-      totals: aggregatePowerTotals(normalized),
-      circuits: normalized,
-    };
+    return normalizeFrmPowerPayload(raw, this.now().toISOString());
   }
+}
+
+/** Shared normalization for HTTP and realtime/overview consumers. */
+export function normalizeFrmPowerPayload(
+  raw: unknown,
+  observedAt: string
+): PowerCurrentState {
+  const circuits = parseUpstream(z.array(powerCircuitSchema).max(100), raw);
+  if (circuits.length === 0) return buildNoCircuitsState(observedAt);
+
+  const normalized = sortPowerCircuits(circuits.map(normalizeCircuit));
+  return {
+    topologyState: "available",
+    observedAt,
+    totals: aggregatePowerTotals(normalized),
+    circuits: normalized,
+  };
 }
 
 function normalizeCircuit(raw: RawPowerCircuit): PowerCircuit {

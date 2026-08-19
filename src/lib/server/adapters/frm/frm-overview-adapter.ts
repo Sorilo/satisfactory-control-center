@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { FrmProvider, OverviewSnapshot } from "@/domain/overview";
 import {
+  normalizeFrmPowerPayload,
+} from "@/lib/server/adapters/frm/frm-power-adapter";
+import {
   parseUpstream,
   requestBoundedJson,
   UpstreamError,
@@ -41,15 +44,6 @@ const playerSchema = z.object({
   Name: z.string(),
   Online: z.boolean(),
 });
-
-const powerCircuitSchema = z.object({
-  CircuitGroupID: z.number().int().nonnegative(),
-  PowerProduction: z.number().finite().nonnegative(),
-  PowerConsumed: z.number().finite().nonnegative(),
-  PowerCapacity: z.number().finite().nonnegative(),
-  FuseTriggered: z.boolean(),
-});
-type PowerCircuit = z.infer<typeof powerCircuitSchema>;
 
 const factoryMachineSchema = z.object({
   ID: z.string(),
@@ -113,14 +107,15 @@ export class FrmOverviewAdapter implements FrmProvider {
 
     const sessionInfo = parseUpstream(sessionInfoSchema, sessionRaw);
     const players = parseUpstream(z.array(playerSchema), playersRaw);
-    const circuits = parseUpstream(z.array(powerCircuitSchema), powerRaw);
     const factories = parseUpstream(z.array(factoryMachineSchema), factoryRaw);
     const elevators = parseUpstream(z.array(spaceElevatorSchema), spaceElevatorRaw);
 
     const onlinePlayers = players.filter((player) => player.Online);
+    const observedAt = new Date().toISOString();
+    const powerState = normalizeFrmPowerPayload(powerRaw, observedAt);
 
     return {
-      observedAt: new Date().toISOString(),
+      observedAt,
       server: { online: true },
       session: {
         name: sessionInfo.SessionName,
@@ -131,7 +126,16 @@ export class FrmOverviewAdapter implements FrmProvider {
         online: onlinePlayers.length,
         names: onlinePlayers.map((player) => player.Name),
       },
-      power: this.normalizePower(circuits),
+      power:
+        powerState.topologyState === "no-circuits"
+          ? null
+          : {
+              capacityMw: powerState.totals.capacityMw,
+              consumptionMw: powerState.totals.consumptionMw,
+              headroomMw: powerState.totals.headroomMw,
+              utilizationPercent: powerState.totals.utilizationPercent,
+              fuseTriggered: powerState.totals.fuseTriggered,
+            },
       factory: this.normalizeFactory(factories),
       progress: this.normalizeProgress(elevators),
     };
@@ -152,29 +156,6 @@ export class FrmOverviewAdapter implements FrmProvider {
     });
   }
 
-  private normalizePower(circuits: PowerCircuit[]): OverviewSnapshot["power"] {
-    if (circuits.length === 0) {
-      return null;
-    }
-    const productionMw = circuits.reduce(
-      (sum, circuit) => sum + circuit.PowerProduction,
-      0
-    );
-    const consumptionMw = circuits.reduce(
-      (sum, circuit) => sum + circuit.PowerConsumed,
-      0
-    );
-    const capacityMw = circuits.reduce(
-      (sum, circuit) => sum + circuit.PowerCapacity,
-      0
-    );
-    return {
-      productionMw,
-      consumptionMw,
-      headroomMw: capacityMw - consumptionMw,
-      fuseTriggered: circuits.some((circuit) => circuit.FuseTriggered),
-    };
-  }
 
   private normalizeFactory(
     factories: FactoryMachine[]

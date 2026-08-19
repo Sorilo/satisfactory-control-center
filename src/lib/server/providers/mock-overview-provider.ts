@@ -26,9 +26,10 @@ function buildSnapshot(): OverviewSnapshot {
       names: ["Ada", "Pioneer-1", "Engineer-2"],
     },
     power: {
-      productionMw: 1250,
+      capacityMw: 1250,
       consumptionMw: 780,
       headroomMw: 470,
+      utilizationPercent: 62.4,
       fuseTriggered: false,
     },
     factory: {
