@@ -27,9 +27,21 @@ Internal exception messages, URLs, query text, and container names are never fie
 
 Unknown, disabled, or non-public server IDs return a generic 404. Malformed IDs return 400. Summary responses use a short public cache; health and streams use `no-store`/`no-cache`.
 
+## Slice 2 power contract
+
+`GET /api/v1/power` accepts only an opaque `serverId` plus allowlisted `range` (`1h`, `6h`, `24h`, `7d`, `15d`) and `resolution` (`auto`, `1m`, `5m`, `15m`, `1h`). It uses a power-specific envelope with independent `freshness.current` and `freshness.history` states. FRM current data may therefore remain available when Prometheus history fails, and retained history may remain available when FRM fails.
+
+Current power exposes capacity, consumption, reported maximum consumption, derived headroom and capacity-denominator utilization, fuse state, bounded circuit data, and independently available generator/major-consumer detail groups. A successful FRM `[]` is live data with `topologyState: "no-circuits"`, zero totals, and no circuits—not an upstream failure.
+
+History exposes only `capacityMw`, `consumptionMw`, and `correctedMaximumConsumptionMw`. Coverage is explicitly `complete`, `partial`, or `empty`, has a literal 15-day retention horizon, and reports the effective coarsened resolution. Historical production is frozen as `{state:"unavailable",reason:"source-not-collected"}`. The initial contract contains no `productionMw` or current-generation field because the reviewed FRM `PowerProduction` meaning is unresolved.
+
+`GET /api/v1/power/stream` is power-only. Snapshot/update payloads contain observation time, topology state, totals, and circuits; they exclude history, generators, and major consumers.
+
+All nested objects are strict. Public serialization rejects private URLs, selectors, raw FRM names, PromQL, datasource identifiers, SQL, hosts, credentials, and stack/error details. History is bounded to 100 series and 2,000 points per series; major consumers are bounded to 10.
+
 ## Planned routes
 
-`/api/v1/power`, `/production`, `/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and `/stream` are implemented only with their vertical slice. No catch-all upstream route will be added.
+`/production`, `/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and non-power streams are implemented only with their vertical slice. No catch-all upstream route will be added.
 
 ## Error shape
 

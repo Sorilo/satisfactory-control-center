@@ -1,0 +1,324 @@
+import { describe, expect, it } from "vitest";
+import {
+  powerEffectiveResolutionSchema,
+  powerEnvelopeSchema,
+  powerHistoryRequestSchema,
+  powerQuerySchema,
+  powerRangeSchema,
+  powerResolutionSchema,
+  type PowerEnvelope,
+} from "./power-contracts";
+
+function validEnvelope(): PowerEnvelope {
+  return {
+    apiVersion: "v1",
+    generatedAt: "2026-08-18T18:00:00.000Z",
+    serverId: "main",
+    freshness: {
+      current: { state: "live", observedAt: "2026-08-18T17:59:59.000Z" },
+      history: { state: "live", observedAt: "2026-08-18T17:59:58.000Z" },
+    },
+    data: {
+      current: {
+        topologyState: "available",
+        totals: {
+          capacityMw: 20,
+          consumptionMw: 5,
+          reportedMaximumConsumptionMw: 7,
+          headroomMw: 15,
+          utilizationPercent: 25,
+          fuseTriggered: false,
+        },
+        circuits: [
+          {
+            id: "0",
+            capacityMw: 20,
+            consumptionMw: 5,
+            reportedMaximumConsumptionMw: 7,
+            headroomMw: 15,
+            utilizationPercent: 25,
+            fuseTriggered: false,
+            associatedCircuitCount: 1,
+            battery: {
+              chargePercent: 75,
+              netFlowMw: 100,
+              secondsToEmpty: 3600,
+              secondsToFull: null,
+            },
+          },
+        ],
+        generators: {
+          state: "live",
+          items: [
+            {
+              name: "Coal Generator",
+              fuelType: "coal",
+              productionCapacityMw: 75,
+              loadPercent: 50,
+              canStart: true,
+            },
+          ],
+        },
+        majorConsumers: {
+          state: "live",
+          items: [
+            {
+              name: "Assembler Bank",
+              circuitId: "0",
+              consumptionMw: 3,
+              maximumConsumptionMw: 5,
+            },
+          ],
+        },
+      },
+      history: {
+        coverage: {
+          state: "complete",
+          requestedRange: "1h",
+          effectiveResolution: "1m",
+          retentionHorizonDays: 15,
+          oldestSampleAt: "2026-08-18T17:00:00.000Z",
+          newestSampleAt: "2026-08-18T17:59:58.000Z",
+        },
+        series: [
+          {
+            key: "capacityMw",
+            circuitId: "0",
+            points: [{ timestamp: "2026-08-18T17:59:58.000Z", value: 20 }],
+          },
+          {
+            key: "consumptionMw",
+            circuitId: "0",
+            points: [{ timestamp: "2026-08-18T17:59:58.000Z", value: 5 }],
+          },
+          {
+            key: "correctedMaximumConsumptionMw",
+            circuitId: "0",
+            points: [{ timestamp: "2026-08-18T17:59:58.000Z", value: 7 }],
+          },
+        ],
+        production: { state: "unavailable", reason: "source-not-collected" },
+      },
+    },
+    unavailableSources: [],
+  };
+}
+
+function withCurrent(overrides: Partial<PowerEnvelope["data"]["current"]>): PowerEnvelope {
+  const envelope = validEnvelope();
+  envelope.data.current = { ...envelope.data.current!, ...overrides };
+  return envelope;
+}
+
+describe("power v1 contracts", () => {
+  it("accepts a fully populated strict envelope", () => {
+    expect(() => powerEnvelopeSchema.parse(validEnvelope())).not.toThrow();
+  });
+
+  it("accepts live no-circuits current state with zero totals and no circuits", () => {
+    const envelope = validEnvelope();
+    envelope.data.current = {
+      topologyState: "no-circuits",
+      totals: {
+        capacityMw: 0,
+        consumptionMw: 0,
+        reportedMaximumConsumptionMw: 0,
+        headroomMw: 0,
+        utilizationPercent: null,
+        fuseTriggered: false,
+      },
+      circuits: [],
+      generators: { state: "unavailable", items: [] },
+      majorConsumers: { state: "unavailable", items: [] },
+    };
+    expect(() => powerEnvelopeSchema.parse(envelope)).not.toThrow();
+  });
+
+  it("rejects a public productionMw field on totals and circuits", () => {
+    const totalsEnvelope = withCurrent({
+      totals: { ...validEnvelope().data.current!.totals, productionMw: 123 } as never,
+    });
+    expect(() => powerEnvelopeSchema.parse(totalsEnvelope)).toThrow();
+
+    const circuitEnvelope = validEnvelope();
+    circuitEnvelope.data.current!.circuits[0] = {
+      ...circuitEnvelope.data.current!.circuits[0],
+      productionMw: 123,
+    } as never;
+    expect(() => powerEnvelopeSchema.parse(circuitEnvelope)).toThrow();
+  });
+
+  it("keeps current and history fresh independently (not all-or-nothing)", () => {
+    const frmOnly = validEnvelope();
+    frmOnly.data.history = null;
+    frmOnly.freshness.history = { state: "unavailable", observedAt: null };
+    frmOnly.unavailableSources = ["prometheus"];
+    expect(() => powerEnvelopeSchema.parse(frmOnly)).not.toThrow();
+
+    const promOnly = validEnvelope();
+    promOnly.data.current = null;
+    promOnly.freshness.current = { state: "unavailable", observedAt: null };
+    promOnly.unavailableSources = ["frm"];
+    expect(() => powerEnvelopeSchema.parse(promOnly)).not.toThrow();
+  });
+
+  it("accepts complete, partial, and empty history coverage", () => {
+    for (const state of ["complete", "partial", "empty"] as const) {
+      const envelope = validEnvelope();
+      envelope.data.history!.coverage.state = state;
+      expect(() => powerEnvelopeSchema.parse(envelope)).not.toThrow();
+    }
+    const envelope = validEnvelope();
+    (envelope.data.history!.coverage.state as string) = "unknown";
+    expect(() => powerEnvelopeSchema.parse(envelope)).toThrow();
+  });
+
+  it("locks historical production to unavailable with a fixed reason", () => {
+    const envelope = validEnvelope();
+    envelope.data.history!.production = { state: "live", reason: "fabricated" } as never;
+    expect(() => powerEnvelopeSchema.parse(envelope)).toThrow();
+
+    const ok = validEnvelope();
+    ok.data.history!.production = { state: "unavailable", reason: "source-not-collected" };
+    expect(() => powerEnvelopeSchema.parse(ok)).not.toThrow();
+  });
+
+  it("accepts only frm and prometheus unavailable sources", () => {
+    const both = validEnvelope();
+    both.unavailableSources = ["frm", "prometheus"];
+    expect(() => powerEnvelopeSchema.parse(both)).not.toThrow();
+
+    const postgres = validEnvelope();
+    postgres.unavailableSources = ["postgres"] as never;
+    expect(() => powerEnvelopeSchema.parse(postgres)).toThrow();
+
+    const unknown = validEnvelope();
+    unknown.unavailableSources = ["gremlin"] as never;
+    expect(() => powerEnvelopeSchema.parse(unknown)).toThrow();
+  });
+
+  it("rejects private and raw fields at every nested boundary", () => {
+    const leaks = [
+      { url: "http://private:8080/getPower" },
+      { session_name: "satisfactory-save" },
+      { promql: 'power_capacity{session="x"}' },
+      { sql: "SELECT * FROM circuits" },
+      { host: "prometheus.internal" },
+      { token: "secret-token" },
+      { datasourceUid: "abc123" },
+      { PowerProduction: 0 },
+      { CircuitGroupID: 0 },
+    ];
+    for (const leak of leaks) {
+      const envelope = withCurrent({ ...leak } as never);
+      expect(() => powerEnvelopeSchema.parse(envelope)).toThrow();
+    }
+
+    const seriesLeak = validEnvelope();
+    seriesLeak.data.history!.series[0] = {
+      ...seriesLeak.data.history!.series[0],
+      metricName: "power_capacity",
+    } as never;
+    expect(() => powerEnvelopeSchema.parse(seriesLeak)).toThrow();
+  });
+
+  it("enforces the exact history series keys including correctedMaximumConsumptionMw", () => {
+    const ok = validEnvelope();
+    ok.data.history!.series = [
+      {
+        key: "correctedMaximumConsumptionMw",
+        circuitId: "0",
+        points: [{ timestamp: "2026-08-18T17:59:58.000Z", value: 7 }],
+      },
+    ];
+    expect(() => powerEnvelopeSchema.parse(ok)).not.toThrow();
+
+    const wrong = validEnvelope();
+    wrong.data.history!.series[0] = {
+      ...wrong.data.history!.series[0],
+      key: "reportedMaximumConsumptionMw",
+    } as never;
+    expect(() => powerEnvelopeSchema.parse(wrong)).toThrow();
+
+    const productionSeries = validEnvelope();
+    productionSeries.data.history!.series[0] = {
+      ...productionSeries.data.history!.series[0],
+      key: "productionMw",
+    } as never;
+    expect(() => powerEnvelopeSchema.parse(productionSeries)).toThrow();
+  });
+
+  it("rejects non-finite numeric values", () => {
+    const envelope = validEnvelope();
+    envelope.data.current!.totals.capacityMw = Number.NaN;
+    expect(() => powerEnvelopeSchema.parse(envelope)).toThrow();
+
+    const inf = validEnvelope();
+    inf.data.current!.totals.headroomMw = Number.POSITIVE_INFINITY;
+    expect(() => powerEnvelopeSchema.parse(inf)).toThrow();
+
+    const point = validEnvelope();
+    point.data.history!.series[0]!.points[0]!.value = Number.NaN;
+    expect(() => powerEnvelopeSchema.parse(point)).toThrow();
+  });
+
+  it("caps bounded arrays to the frozen limits", () => {
+    const consumers = validEnvelope();
+    consumers.data.current!.majorConsumers.items = Array.from(
+      { length: 11 },
+      (_, i) => ({
+        name: `Consumer ${i}`,
+        circuitId: "0",
+        consumptionMw: 1,
+        maximumConsumptionMw: 2,
+      })
+    );
+    expect(() => powerEnvelopeSchema.parse(consumers)).toThrow();
+
+    const series = validEnvelope();
+    series.data.history!.series = Array.from({ length: 101 }, () => ({
+      key: "capacityMw" as const,
+      circuitId: "0",
+      points: [{ timestamp: "2026-08-18T17:59:58.000Z", value: 1 }],
+    }));
+    expect(() => powerEnvelopeSchema.parse(series)).toThrow();
+
+    const points = validEnvelope();
+    points.data.history!.series[0]!.points = Array.from({ length: 2001 }, () => ({
+      timestamp: "2026-08-18T17:59:58.000Z",
+      value: 1,
+    }));
+    expect(() => powerEnvelopeSchema.parse(points)).toThrow();
+  });
+
+  it("allowlists the exact history range and resolution enums", () => {
+    for (const range of ["1h", "6h", "24h", "7d", "15d"]) {
+      expect(powerRangeSchema.parse(range)).toBe(range);
+    }
+    expect(() => powerRangeSchema.parse("30d")).toThrow();
+
+    for (const resolution of ["auto", "1m", "5m", "15m", "1h"]) {
+      expect(powerResolutionSchema.parse(resolution)).toBe(resolution);
+    }
+    expect(() => powerResolutionSchema.parse("2m")).toThrow();
+
+    for (const effective of ["1m", "5m", "15m", "1h"]) {
+      expect(powerEffectiveResolutionSchema.parse(effective)).toBe(effective);
+    }
+  });
+
+  it("defines strict request types with only allowlisted keys", () => {
+    expect(() =>
+      powerHistoryRequestSchema.parse({ range: "1h", resolution: "auto" })
+    ).not.toThrow();
+    expect(() =>
+      powerHistoryRequestSchema.parse({ range: "1h", resolution: "auto", promql: "x" })
+    ).toThrow();
+    expect(() =>
+      powerQuerySchema.parse({ serverId: "main", range: "24h", resolution: "auto" })
+    ).not.toThrow();
+    expect(() =>
+      powerQuerySchema.parse({ serverId: "main", range: "24h", resolution: "auto", extra: "1" })
+    ).toThrow();
+  });
+});
