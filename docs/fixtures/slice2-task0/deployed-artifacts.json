@@ -1,0 +1,17 @@
+{
+  "validatedAt": "2026-08-18",
+  "artifacts": {
+    "satisfactoryServer": {
+      "image": "wolveix/satisfactory-server",
+      "imageId": "sha256:5eeddf2ad9391400bf973e47c2cdc8432d06159ea43950a76ee51c57fccc8b97"
+    },
+    "frmCompanion": {
+      "image": "featheredtoast/ficsit-remote-monitoring-companion",
+      "imageId": "sha256:6b0f0aa762b0d4c9e727bae3ba495e5a1bdde135757e6113b9741602ea530bc3"
+    },
+    "prometheus": {
+      "image": "prom/prometheus",
+      "imageId": "sha256:8da6d95a8747c08872fbffa86d35a9c39433cbe908ce8e5939ad34087cceac86"
+    }
+  }
+}

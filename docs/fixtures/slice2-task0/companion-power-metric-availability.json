@@ -1,0 +1,15 @@
+{
+  "observedMetricNames": [
+    "power_capacity",
+    "power_consumed",
+    "power_max_consumed"
+  ],
+  "documentedButNotObserved": [
+    "battery_differential",
+    "battery_percent",
+    "battery_capacity",
+    "battery_seconds_empty",
+    "battery_seconds_full",
+    "fuse_triggered"
+  ]
+}
