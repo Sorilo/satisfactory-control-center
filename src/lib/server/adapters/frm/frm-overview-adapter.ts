@@ -1,5 +1,14 @@
 import { z } from "zod";
 import type { FrmProvider, OverviewSnapshot } from "@/domain/overview";
+import {
+  parseUpstream,
+  requestBoundedJson,
+  UpstreamError,
+  type Fetcher,
+} from "@/lib/server/http/bounded-json";
+
+export { UpstreamError };
+export type { Fetcher };
 
 /**
  * FRM (Ficsit Remote Monitoring) overview adapter.
@@ -13,28 +22,12 @@ import type { FrmProvider, OverviewSnapshot } from "@/domain/overview";
  * other undeclared data) are stripped during parse and never reach the domain.
  */
 
-export type Fetcher = (
-  input: string | URL | Request,
-  init?: RequestInit
-) => Promise<Response>;
-
 export interface FrmOverviewAdapterOptions {
   baseUrl: string;
   token?: string;
   fetcher?: Fetcher;
   maxResponseBytes?: number;
   timeoutMs?: number;
-}
-
-/** Typed, public-safe upstream failure code. */
-export class UpstreamError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message?: string) {
-    super(message ?? code);
-    this.name = "UpstreamError";
-    this.code = code;
-  }
 }
 
 const sessionInfoSchema = z.object({
@@ -118,11 +111,11 @@ export class FrmOverviewAdapter implements FrmProvider {
         this.request("getSpaceElevator"),
       ]);
 
-    const sessionInfo = this.parse(sessionInfoSchema, sessionRaw);
-    const players = this.parse(z.array(playerSchema), playersRaw);
-    const circuits = this.parse(z.array(powerCircuitSchema), powerRaw);
-    const factories = this.parse(z.array(factoryMachineSchema), factoryRaw);
-    const elevators = this.parse(z.array(spaceElevatorSchema), spaceElevatorRaw);
+    const sessionInfo = parseUpstream(sessionInfoSchema, sessionRaw);
+    const players = parseUpstream(z.array(playerSchema), playersRaw);
+    const circuits = parseUpstream(z.array(powerCircuitSchema), powerRaw);
+    const factories = parseUpstream(z.array(factoryMachineSchema), factoryRaw);
+    const elevators = parseUpstream(z.array(spaceElevatorSchema), spaceElevatorRaw);
 
     const onlinePlayers = players.filter((player) => player.Online);
 
@@ -146,86 +139,17 @@ export class FrmOverviewAdapter implements FrmProvider {
 
   private async request(path: FrmReadEndpoint): Promise<unknown> {
     const url = `${this.baseUrl}/${path}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const headers: Record<string, string> = {};
-      if (this.token !== null) {
-        headers["X-FRM-Authorization"] = this.token;
-      }
-
-      const response = await this.fetcher(url, {
-        headers,
-        redirect: "error",
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new UpstreamError("UPSTREAM_UNAVAILABLE");
-      }
-
-      this.assertWithinSizeBound(response);
-
-      const buffer = await this.readBodyWithinLimit(response);
-      const text = new TextDecoder().decode(buffer);
-      try {
-        return JSON.parse(text) as unknown;
-      } catch {
-        throw new UpstreamError("UPSTREAM_SCHEMA_INVALID");
-      }
-    } catch (error) {
-      if (error instanceof UpstreamError) {
-        throw error;
-      }
-      throw new UpstreamError("UPSTREAM_UNAVAILABLE");
-    } finally {
-      clearTimeout(timer);
+    const headers: Record<string, string> = {};
+    if (this.token !== null) {
+      headers["X-FRM-Authorization"] = this.token;
     }
-  }
-
-  private assertWithinSizeBound(response: Response): void {
-    const contentLength = response.headers.get("content-length");
-    if (contentLength !== null) {
-      const parsed = Number(contentLength);
-      if (Number.isFinite(parsed) && parsed > this.maxResponseBytes) {
-        throw new UpstreamError("UPSTREAM_RESPONSE_TOO_LARGE");
-      }
-    }
-  }
-
-  private async readBodyWithinLimit(response: Response): Promise<Uint8Array> {
-    if (response.body === null) return new Uint8Array();
-
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > this.maxResponseBytes) {
-        await reader.cancel();
-        throw new UpstreamError("UPSTREAM_RESPONSE_TOO_LARGE");
-      }
-      chunks.push(value);
-    }
-
-    const buffer = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      buffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return buffer;
-  }
-
-  private parse<T>(schema: z.ZodType<T>, raw: unknown): T {
-    const result = schema.safeParse(raw);
-    if (!result.success) {
-      throw new UpstreamError("UPSTREAM_SCHEMA_INVALID");
-    }
-    return result.data;
+    return requestBoundedJson({
+      url,
+      headers,
+      fetcher: this.fetcher,
+      maxResponseBytes: this.maxResponseBytes,
+      timeoutMs: this.timeoutMs,
+    });
   }
 
   private normalizePower(circuits: PowerCircuit[]): OverviewSnapshot["power"] {
