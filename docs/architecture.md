@@ -1,6 +1,6 @@
 # Architecture review
 
-**Status:** Accepted for foundation/Slice 1; later slices remain Planned.<br>
+**Status:** Accepted through Slice 2; later slices remain Planned.<br>
 **Reviewed:** 2026-08-18 against FRM upstream commit `32fe64e0c22389a944c27222ef6c881f5e207072`.
 
 ## Scope and evidence labels
@@ -91,7 +91,7 @@ sequenceDiagram
 
 ## Realtime
 
-**Planned:** a Node-process singleton will maintain at most one FRM subscription/poll loop per configured server and publish normalized snapshots. Public SSE will send an initial snapshot, updates, and heartbeat comments with `no-cache, no-transform`. Horizontal scaling will require an external pub/sub adapter; one Unraid replica is the current deployment contract.
+**Implemented for Power:** a Node-process singleton maintains at most one bounded `getPower` polling loop per configured server and publishes strict normalized snapshots. Public same-origin SSE sends an initial snapshot, changed updates, heartbeat comments, and `Cache-Control: no-store, no-transform`; it enforces per-client/global connection limits, bounded event size, and abort cleanup. The browser makes at most two delayed reconnects before falling back to the curated `/api/v1/power` route. `POWER_STREAM_ENABLED` defaults to `false` until the deployment path is explicitly validated. Upstream FRM WebSocket use remains a future private producer option rather than a public tunnel. Horizontal scaling requires an external pub/sub or ownership mechanism; one Unraid replica is the current contract.
 
 ## Health semantics
 

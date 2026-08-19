@@ -35,7 +35,7 @@ Current power exposes capacity, consumption, reported maximum consumption, deriv
 
 History exposes only `capacityMw`, `consumptionMw`, and `correctedMaximumConsumptionMw`. Coverage is explicitly `complete`, `partial`, or `empty`, has a literal 15-day retention horizon, and reports the effective coarsened resolution. Historical production is frozen as `{state:"unavailable",reason:"source-not-collected"}`. The initial contract contains no `productionMw` or current-generation field because the reviewed FRM `PowerProduction` meaning is unresolved.
 
-`GET /api/v1/power/stream` is power-only. Snapshot/update payloads contain observation time, topology state, totals, and circuits; they exclude history, generators, and major consumers.
+`GET /api/v1/power/stream?serverId=<opaque-id>` is power-only and enabled only when `POWER_STREAM_ENABLED=true`. It accepts exactly one `serverId`; malformed/unknown IDs, duplicate/unknown parameters, invalid `Last-Event-ID`, disabled streaming, and connection exhaustion return sanitized errors. SSE `power` events contain observation time, topology state, totals, and circuits; they exclude history, generators, and major consumers. Event IDs are server-scoped monotonic sequences, frames are bounded, heartbeat comments keep idle connections observable, and responses use `no-store, no-transform`.
 
 All nested objects are strict. Public serialization rejects private URLs, selectors, raw FRM names, PromQL, datasource identifiers, SQL, hosts, credentials, and stack/error details. History is bounded to 100 series and 2,000 points per series; major consumers are bounded to 10.
 

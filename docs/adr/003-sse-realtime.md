@@ -1,14 +1,14 @@
 # ADR-003: SSE public realtime transport
 
-**Status:** Accepted for single-replica deployment; implementation phased
+**Status:** Accepted and implemented for opt-in power-only single-replica deployment
 
 ## Decision
 
 Use one server-owned FRM subscription or bounded HTTP polling loop per configured server and same-origin SSE downstream. Telemetry is server-to-browser, so SSE provides automatic reconnect and simpler proxy behavior than a bidirectional public WebSocket. A shared process aggregator is required before enabling realtime fan-out.
 
-The initial Slice 2 stream is power-only and normalized. It subscribes only to the fixed `getPower` endpoint or polls that same endpoint; generator and major-consumer detail remain bounded request/refresh reads unless later evidence justifies adding them to the shared loop. Public clients never choose an FRM endpoint and never receive the upstream `{endpoint,data}` envelope.
+The initial Slice 2 stream is power-only and normalized. Its current private producer polls only the fixed `getPower` endpoint; a future reviewed FRM WebSocket producer may replace that implementation without changing the public contract. Generator and major-consumer detail remain bounded request/refresh reads unless later evidence justifies adding them to the shared loop. Public clients never choose an FRM endpoint and never receive the upstream `{endpoint,data}` envelope.
 
-The stream sends an initial normalized snapshot, later changed snapshots, and heartbeat comments. It uses `Cache-Control: no-cache, no-transform`, is same-origin, and has explicit per-client and global connection limits, bounded event size, abort cleanup, and polling fallback. Upstream reconnect uses bounded backoff and jitter and does not create one FRM connection per browser.
+The stream sends an initial normalized snapshot, later changed snapshots, and heartbeat comments. It uses `Cache-Control: no-store, no-transform`, is same-origin, and has explicit per-client and global connection limits, bounded event size, backpressure coalescing, abort cleanup, and browser polling fallback. Producer restart uses bounded backoff and jitter and does not create one FRM poll loop per browser. The browser attempts two delayed reconnects (one and two seconds); after the third failure it refreshes the strict `/api/v1/power` envelope every 15 seconds.
 
 Prometheus history is not multiplexed through the FRM realtime stream. FRM failure must not disable historical queries; Prometheus failure must not disable realtime power.
 

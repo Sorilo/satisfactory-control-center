@@ -1,8 +1,8 @@
 # Deploy v0.1.0 on Unraid
 
-## Slice 1 release boundary
+## Slice 1 release and Slice 2 candidate boundary
 
-Slice 1 ships one public-safe, read-only Next.js control-center image with a responsive shell, deterministic mock mode, curated live FRM overview reads, opaque multi-server selection, versioned overview/server APIs, and health endpoints. It does **not** include Prometheus/PostgreSQL history, realtime SSE aggregation, persistence, the full map, or the later data-rich views. Those remain in [`requirements-matrix.md`](requirements-matrix.md).
+The published `v0.1.0` image is the Slice 1 foundation. The current Slice 2 candidate adds normalized current Power, fixed-query optional Prometheus history, and an opt-in bounded power-only SSE stream with HTTP polling fallback. It still does **not** include PostgreSQL history, persistence, the full map, or later data-rich views. Those remain in [`requirements-matrix.md`](requirements-matrix.md).
 
 Published images:
 
@@ -25,9 +25,9 @@ docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.1.0 \
 
 Expected user: `app`. Never use build arguments for URLs or tokens.
 
-## Discover the one required network
+## Discover required private networks
 
-Slice 1 requires only the existing Satisfactory/FRM Docker network. It does not need monitoring, database, Docker-socket, or management-plane access.
+The base Compose contract requires only the existing Satisfactory/FRM Docker network. Live Prometheus history additionally requires reachability to Prometheus, normally through an existing private monitoring network added in a site-owned Compose override. No mode needs database, Docker-socket, or management-plane access.
 
 On an authorized Unraid terminal, inspect rather than guess:
 
@@ -36,7 +36,7 @@ docker network ls
 docker network inspect <candidate-game-network>
 ```
 
-Confirm the FRM service alias and set that exact network as `GAME_NETWORK`. Never mount `/var/run/docker.sock`. Add a monitoring network only in a later slice that actually implements Prometheus/PostgreSQL access.
+Confirm the FRM service alias and set that exact network as `GAME_NETWORK`. When enabling history, inspect and attach the existing monitoring network only if Prometheus is not reachable on the game network. Never mount `/var/run/docker.sock` and never publish the Prometheus port.
 
 ## Runtime environment
 
@@ -56,6 +56,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 | `SERVERS_JSON` | Optional alternative to single-server fields | Multi-server registry with unique opaque IDs and server-only URLs/tokens. |
 | `PROMETHEUS_SERVERS_JSON` | Optional; defaults to no history source | Separate strict array of `{serverId,baseUrl,urlLabel,sessionLabel}` mappings. Each `serverId` must already exist in the FRM registry. Values remain server-only. |
 | `TRUST_PROXY_HEADERS` | `false` | Enable only behind a trusted proxy that overwrites forwarded-client headers. |
+| `POWER_STREAM_ENABLED` | `false` | Enables the bounded power-only SSE route. Keep false until buffering and disconnect cleanup pass through the actual proxy/Tunnel path. |
 
 For live mode, provide either one `FRM_BASE_URL` plus optional `FRM_TOKEN`, or `SERVERS_JSON`. Enabled live entries require HTTP(S) URLs without embedded credentials. The public server catalog exposes only `id` and `displayName`.
 
@@ -83,11 +84,18 @@ curl --fail --silent http://127.0.0.1:3000/api/v1/servers | \
   jq -e '.defaultServerId and (.servers | length > 0)'
 curl --fail --silent 'http://127.0.0.1:3000/api/v1/overview?serverId=main' | \
   jq -e '.apiVersion == "v1" and .serverId == "main"'
+curl --fail --silent 'http://127.0.0.1:3000/api/v1/power?serverId=main&range=6h&resolution=auto' | \
+  jq -e '.apiVersion == "v1" and .serverId == "main" and .data.current != null'
 ```
 
 - `/api/health/live` proves the process serves HTTP and is appropriate for restart health.
 - `/api/health/ready` validates runtime configuration only. It intentionally does not turn an optional FRM outage into a restart loop.
 - The overview envelope is the authoritative live-upstream check.
+- The Power envelope reports current FRM and historical Prometheus freshness independently; one unavailable source must not erase the other.
+
+## Opt in to power realtime
+
+Keep `POWER_STREAM_ENABLED=false` for the initial current/history rollout. After ordinary Power requests pass, enable it in the external environment, recreate only Control Center, and validate the stream through the same public reverse-proxy/Tunnel hostname used by browsers—not only loopback. Require an initial `event: power`, periodic heartbeat comments, prompt disconnect cleanup, and no proxy buffering. If validation fails, set the flag back to false; the client continues using the curated Power HTTP route.
 
 ## Enable and verify live FRM connectivity
 

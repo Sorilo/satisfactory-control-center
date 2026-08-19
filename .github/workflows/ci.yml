@@ -68,7 +68,7 @@ jobs:
         run: docker compose --env-file .env.example -f compose.example.yml config --quiet
       - name: Build production image
         run: docker build --pull --tag satisfactory-control-center:ci .
-      - name: Smoke-test hardened runtime and Slice 1 contracts
+      - name: Smoke-test hardened runtime and Slice 1–2 contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -120,7 +120,22 @@ jobs:
             .data.server.online == true and
             .unavailableSources == []
           ' /tmp/overview.json
-          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|https?://' /tmp/servers.json /tmp/overview.json; then
+
+          curl --fail --silent 'http://127.0.0.1:3000/api/v1/power?serverId=main&range=6h&resolution=auto' > /tmp/power.json
+          jq -e '
+            .apiVersion == "v1" and
+            .serverId == "main" and
+            .freshness.current.state == "live" and
+            .data.current.topologyState == "available" and
+            (.data.current.circuits | length) > 0 and
+            .freshness.history.state == "live" and
+            (.data.history.series | length) > 0
+          ' /tmp/power.json
+          if curl --fail --silent 'http://127.0.0.1:3000/api/v1/power/stream?serverId=main' > /tmp/stream.txt; then
+            echo "power stream must remain disabled by default" >&2
+            exit 1
+          fi
+          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|PROMETHEUS_SERVERS_JSON|urlLabel|sessionLabel|https?://' /tmp/servers.json /tmp/overview.json /tmp/power.json; then
             echo "public API leaked an internal configuration field" >&2
             exit 1
           fi
