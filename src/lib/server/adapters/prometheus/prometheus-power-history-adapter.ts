@@ -88,6 +88,9 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
     const series = responses.flatMap(({ spec, response }) =>
       this.normalizeResponse(spec.metric, spec.key, response)
     );
+    if (series.length > 100) {
+      throw new UpstreamError("UPSTREAM_SCHEMA_INVALID");
+    }
     series.sort(compareSeries);
 
     const allPoints = series.flatMap((item) => item.points);

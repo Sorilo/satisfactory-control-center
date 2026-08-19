@@ -171,6 +171,25 @@ describe("Prometheus power history adapter", () => {
     }
   });
 
+  it("rejects combined cardinality above the public 100-series cap", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const query = new URL(String(input)).searchParams.get("query") ?? "";
+      const metric = Object.keys(METRIC_TO_KEY).find((name) => query.startsWith(`${name}{`))!;
+      const base = matrix(metric).data.result[0]!;
+      return response({
+        status: "success",
+        data: {
+          resultType: "matrix",
+          result: Array.from({ length: 34 }, (_, circuitId) => ({
+            ...base,
+            metric: { ...base.metric, circuit_id: String(circuitId) },
+          })),
+        },
+      });
+    });
+    await expect(adapter(fetcher as typeof fetch).getHistory({ range: "1h", resolution: "1m" })).rejects.toMatchObject({ code: "UPSTREAM_SCHEMA_INVALID" });
+  });
+
   it("rejects Prometheus warnings/errors and bounded transport failures", async () => {
     for (const invalid of [
       { status: "error", errorType: "bad_data", error: "private query" },
