@@ -27,9 +27,23 @@ Internal exception messages, URLs, query text, and container names are never fie
 
 Unknown, disabled, or non-public server IDs return a generic 404. Malformed IDs return 400. Summary responses use a short public cache; health and streams use `no-store`/`no-cache`.
 
+## Slice 2 power contract
+
+`GET /api/v1/power` accepts only an opaque `serverId` plus allowlisted `range` (`1h`, `6h`, `24h`, `7d`, `15d`) and `resolution` (`auto`, `1m`, `5m`, `15m`, `1h`). It uses a power-specific envelope with independent `freshness.current` and `freshness.history` states. FRM current data may therefore remain available when Prometheus history fails, and retained history may remain available when FRM fails.
+
+Current power exposes capacity, consumption, reported maximum consumption, derived headroom and capacity-denominator utilization, fuse state, bounded circuit data, and independently available generator/major-consumer detail groups. Generator details are capped at 100 and expose only display name, explicit connected/disconnected circuit membership, normalized fuel type, optional `{name,amount,capacity}` inventory, capacity/load, start readiness, and fuse state. Major consumers are ranked server-side by consumption descending, maximum descending, then deterministic safe tie-breakers and capped at 10; disconnected all-zero structures are omitted while connected zero-draw records may remain as useful topology detail. A successful detail `[]` is `state:"live"` with an empty `items` array, not source failure.
+
+Circuit membership never maps upstream `-1` to circuit `0`: it is serialized as `{state:"disconnected",id:"-1"}`; connected membership is `{state:"connected",id:"<nonnegative decimal>"}`. Raw IDs, class names, coordinates/orientation, inventory class names, and unresolved generator production/demand fields are validated server-side where required and discarded before the domain/public boundary. No map/location field is exposed because Slice 2 has no implemented public normalized map contract. A successful aggregate FRM `[]` is live data with `topologyState: "no-circuits"`, zero totals, and no circuits—not an upstream failure.
+
+History exposes only `capacityMw`, `consumptionMw`, and `correctedMaximumConsumptionMw`. Coverage is explicitly `complete`, `partial`, or `empty`, has a literal 15-day retention horizon, and reports the effective coarsened resolution. Historical production is frozen as `{state:"unavailable",reason:"source-not-collected"}`. The initial contract contains no `productionMw` or current-generation field because the reviewed FRM `PowerProduction` meaning is unresolved.
+
+`GET /api/v1/power/stream?serverId=<opaque-id>` is power-only and enabled only when `POWER_STREAM_ENABLED=true`. It accepts exactly one `serverId`; malformed/unknown IDs, duplicate/unknown parameters, invalid `Last-Event-ID`, disabled streaming, and connection exhaustion return sanitized errors. SSE `power` events contain observation time, topology state, totals, and circuits; they exclude history, generators, and major consumers. Event IDs are server-scoped monotonic sequences, frames are bounded, heartbeat comments keep idle connections observable, and responses use `no-store, no-transform`.
+
+All nested objects are strict. Public serialization rejects private URLs, selectors, raw FRM names, PromQL, datasource identifiers, SQL, hosts, credentials, and stack/error details. History is bounded to 100 series and 2,000 points per series; major consumers are bounded to 10.
+
 ## Planned routes
 
-`/api/v1/power`, `/production`, `/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and `/stream` are implemented only with their vertical slice. No catch-all upstream route will be added.
+`/production`, `/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and non-power streams are implemented only with their vertical slice. No catch-all upstream route will be added.
 
 ## Error shape
 

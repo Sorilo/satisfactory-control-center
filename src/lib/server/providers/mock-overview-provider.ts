@@ -1,4 +1,5 @@
 import type { FrmProvider, OverviewSnapshot } from "@/domain/overview";
+import { MOCK_POWER_TOTALS } from "@/lib/server/providers/mock-power-providers";
 
 /**
  * Deterministic mock overview provider.
@@ -26,10 +27,11 @@ function buildSnapshot(): OverviewSnapshot {
       names: ["Ada", "Pioneer-1", "Engineer-2"],
     },
     power: {
-      productionMw: 1250,
-      consumptionMw: 780,
-      headroomMw: 470,
-      fuseTriggered: false,
+      capacityMw: MOCK_POWER_TOTALS.capacityMw,
+      consumptionMw: MOCK_POWER_TOTALS.consumptionMw,
+      headroomMw: MOCK_POWER_TOTALS.headroomMw,
+      utilizationPercent: MOCK_POWER_TOTALS.utilizationPercent,
+      fuseTriggered: MOCK_POWER_TOTALS.fuseTriggered,
     },
     factory: {
       machineCount: 64,

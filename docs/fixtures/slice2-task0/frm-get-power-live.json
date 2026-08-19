@@ -1,0 +1,18 @@
+[
+  {
+    "CircuitGroupID": 0,
+    "PowerProduction": 0,
+    "PowerConsumed": 5,
+    "PowerCapacity": 20,
+    "PowerMaxConsumed": 5,
+    "BatteryInput": 0,
+    "BatteryOutput": 0,
+    "BatteryDifferential": 0,
+    "BatteryPercent": 0,
+    "BatteryCapacity": 0,
+    "BatteryTimeEmpty": "00:00:00",
+    "BatteryTimeFull": "00:00:00",
+    "AssociatedCircuits": [0],
+    "FuseTriggered": false
+  }
+]

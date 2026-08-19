@@ -1,0 +1,57 @@
+[
+  {
+    "ID": "fixture-generator-disconnected-001",
+    "Name": "Biomass Burner",
+    "ClassName": "Build_GeneratorIntegratedBiomass_C",
+    "BaseProd": 20,
+    "DynamicProdCapacity": 0,
+    "DynamicProdDemandFactor": 0,
+    "RegulatedDemandProd": 0,
+    "IsFullSpeed": false,
+    "CanStart": false,
+    "LoadPercentage": 0,
+    "CurrentPotential": 100,
+    "ProductionCapacity": 20,
+    "DefaultProductionCapacity": 20,
+    "PowerProductionPotential": 20,
+    "FuelResource": "Geothermal",
+    "FuelInventory": [],
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": -1,
+      "CircuitID": -1,
+      "FuseTriggered": false
+    }
+  },
+  {
+    "ID": "fixture-generator-connected-002",
+    "Name": "Biomass Burner",
+    "ClassName": "Build_GeneratorIntegratedBiomass_C",
+    "BaseProd": 20,
+    "DynamicProdCapacity": 20,
+    "DynamicProdDemandFactor": 25,
+    "RegulatedDemandProd": 5,
+    "IsFullSpeed": false,
+    "CanStart": true,
+    "LoadPercentage": 25,
+    "CurrentPotential": 100,
+    "ProductionCapacity": 20,
+    "DefaultProductionCapacity": 20,
+    "PowerProductionPotential": 20,
+    "FuelResource": "Solid",
+    "FuelInventory": [
+      {
+        "Name": "Biomass",
+        "ClassName": "Desc_GenericBiomass_C",
+        "Amount": 170,
+        "MaxAmount": 200
+      }
+    ],
+    "location": { "x": 0, "y": 0, "z": 0, "rotation": 0, "pitch": 0 },
+    "PowerInfo": {
+      "CircuitGroupID": 0,
+      "CircuitID": 0,
+      "FuseTriggered": false
+    }
+  }
+]

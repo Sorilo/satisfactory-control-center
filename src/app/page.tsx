@@ -1,7 +1,10 @@
 import type { OverviewEnvelope } from "@/contracts/public-contracts";
 import { OverviewDashboard } from "@/features/overview/overview-dashboard";
 import { parseRuntimeConfig, resolvePublicServer, type DataMode } from "@/lib/server/config/runtime-config";
-import { createFrmProvider } from "@/lib/server/providers/provider-factory";
+import {
+  createFrmProvider,
+  createPowerProviders,
+} from "@/lib/server/providers/provider-factory";
 import { getCachedOverviewEnvelope } from "@/lib/server/services/overview-service";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -22,7 +25,8 @@ async function loadPageData(searchParams: SearchParams): Promise<PageData> {
     }
     const envelope = await getCachedOverviewEnvelope(
       server.id,
-      createFrmProvider(config, server)
+      createFrmProvider(config, server),
+      createPowerProviders(config, server).current
     );
     return { ok: true, envelope, dataMode: config.dataMode };
   } catch {

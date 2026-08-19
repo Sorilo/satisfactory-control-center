@@ -14,7 +14,7 @@ const envelope: OverviewEnvelope = {
     server: { online: true },
     session: { name: "Satisfriendery", uptimeSeconds: 3661, paused: false },
     players: { online: 2, names: ["Ada", "Grace"] },
-    power: { productionMw: 5200, consumptionMw: 3900, headroomMw: 2100, fuseTriggered: false },
+    power: { capacityMw: 6000, consumptionMw: 3900, headroomMw: 2100, utilizationPercent: 65, fuseTriggered: false },
     factory: { machineCount: 184, producingCount: 171, averageEfficiencyPercent: 92.4 },
     progress: { items: [{ name: "Assembly Director System", delivered: 3100, required: 4000 }] }
   }
@@ -26,6 +26,9 @@ describe("OverviewDashboard", () => {
     expect(screen.getByRole("heading", { name: /factory overview/i })).toBeInTheDocument();
     expect(screen.getByText("Mock telemetry")).toBeInTheDocument();
     expect(screen.getByText("2.10 GW")).toBeInTheDocument();
+    expect(screen.getByText("6.00 GW")).toBeInTheDocument();
+    expect(screen.getByText("65.0%")).toBeInTheDocument();
+    expect(screen.queryByText(/Power production/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Ada, Grace/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /needs attention/i })).toBeInTheDocument();
     expect(screen.getByText(/900 remaining/i)).toBeInTheDocument();

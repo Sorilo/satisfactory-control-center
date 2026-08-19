@@ -34,8 +34,9 @@ export function OverviewDashboard({ envelope, dataMode }: OverviewDashboardProps
   const attentionItems = data.progress?.items.map((item) => ({ ...item, remaining: Math.max(0, item.required - item.delivered) })) ?? [];
   const kpis = [
     ["Power headroom", data.power ? formatGw(data.power.headroomMw) : "—", "Reserve before capacity"],
-    ["Power production", data.power ? formatGw(data.power.productionMw) : "—", "Current grid output"],
+    ["Power capacity", data.power ? formatGw(data.power.capacityMw) : "—", "Maximum grid capacity"],
     ["Power consumption", data.power ? formatGw(data.power.consumptionMw) : "—", "Current grid demand"],
+    ["Power utilization", data.power?.utilizationPercent === null || !data.power ? "—" : `${data.power.utilizationPercent.toFixed(1)}%`, "Consumption divided by capacity"],
     ["Machines producing", `${data.factory.producingCount} / ${data.factory.machineCount}`, "Active factory equipment"],
     ["Average efficiency", data.factory.averageEfficiencyPercent === null ? "—" : `${data.factory.averageEfficiencyPercent.toFixed(1)}%`, "Across known machines"],
     ["Players online", String(data.players.online), data.players.online ? "Current session roster" : "No players online"],

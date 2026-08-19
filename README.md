@@ -4,7 +4,7 @@
 
 A public-safe, read-only operations portal for multiplayer Satisfactory dedicated servers.
 
-> **Project status:** the production-shaped **Slice 1 foundation is implemented**: responsive shell, deterministic mock mode, curated live FRM overview adapter, multi-server registry, public v1 overview API, health semantics, abuse guard, CI, and a standalone container. The larger major release is intentionally incomplete; each remaining data-rich vertical is tracked in [`docs/requirements-matrix.md`](docs/requirements-matrix.md).
+> **Project status:** the production-shaped **Slices 1–2 are implemented**: the responsive foundation plus normalized current Power, bounded generator/major-consumer details, fixed-query Prometheus history, independent source/detail degradation, and an opt-in bounded power-only SSE stream with polling fallback. `v0.2.0-rc.1` is the Slice 2 release candidate; the larger major release is intentionally incomplete, and each remaining vertical is tracked in [`docs/requirements-matrix.md`](docs/requirements-matrix.md).
 
 ## Principles
 
@@ -43,8 +43,9 @@ The production image is published as:
 
 ```text
 ghcr.io/sorilo/satisfactory-control-center:latest
-ghcr.io/sorilo/satisfactory-control-center:v0.1.0
+ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1
 ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>
+ghcr.io/sorilo/satisfactory-control-center:v0.1.0
 ```
 
 For a source build or local smoke test:
@@ -54,10 +55,11 @@ docker build -t satisfactory-control-center:local .
 docker run --rm -p 127.0.0.1:3000:3000 -e DATA_MODE=mock satisfactory-control-center:local
 ```
 
-Use [`compose.example.yml`](compose.example.yml) and the [Unraid deployment guide](docs/deployment-unraid.md) for the hardened production deployment. Slice 1 attaches only to the existing Satisfactory/FRM Docker network. Never pass secrets as build arguments, mount the Docker socket, or expose upstream ports publicly.
+Use [`compose.example.yml`](compose.example.yml) and the [Unraid deployment guide](docs/deployment-unraid.md) for the hardened production deployment. The base Compose file attaches only to the existing Satisfactory/FRM Docker network; add the private monitoring network in a site-owned override when live Prometheus history is enabled and is not reachable there. Never pass secrets as build arguments, mount the Docker socket, or expose upstream ports publicly.
 
 ## Documentation
 
+- [v0.2.0-rc.1 release-candidate notes](docs/releases/v0.2.0-rc.1.md)
 - [v0.1.0 release notes](docs/releases/v0.1.0.md)
 - [Architecture](docs/architecture.md)
 - [Data sources](docs/data-sources.md)

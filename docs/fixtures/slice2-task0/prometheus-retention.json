@@ -1,0 +1,4 @@
+{
+  "storage.tsdb.retention.time": "15d",
+  "storage.tsdb.retention.size": "0B"
+}

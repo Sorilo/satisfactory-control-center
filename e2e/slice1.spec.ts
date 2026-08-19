@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("Slice 1 control center", () => {
-  test("renders a useful overview and honest staged destinations", async ({ page }) => {
+  test("renders a useful overview and the implemented power destination", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Factory overview" })).toBeVisible();
     await expect(page.getByText("Mock telemetry")).toBeVisible();
@@ -11,9 +11,9 @@ test.describe("Slice 1 control center", () => {
 
     await page.getByRole("link", { name: "Power", exact: true }).click();
     await expect(page).toHaveURL(/\/power\?serverId=main$/);
-    await expect(page.getByRole("heading", { name: "Power", exact: true })).toBeVisible();
-    await expect(page.getByText(/planned vertical slice/i)).toBeVisible();
-    await expect(page.getByText(/No telemetry is being inferred or fabricated/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Power grid", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: /power key performance indicators/i })).toBeVisible();
+    await expect(page.getByText(/historical production is not collected/i)).toBeVisible();
   });
 
   test("serves strict public API and health contracts", async ({ request }) => {
@@ -56,6 +56,6 @@ test.describe("Slice 1 control center", () => {
     await expect(page.getByLabel("Active server")).toHaveValue("beta");
     await page.getByRole("link", { name: "Power", exact: true }).click();
     await expect(page).toHaveURL(/\/power\?serverId=beta$/);
-    await expect(page.getByRole("article").getByText("Beta World", { exact: true })).toBeVisible();
+    await expect(page.locator('input[name="serverId"]').first()).toHaveValue("beta");
   });
 });

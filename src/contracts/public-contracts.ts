@@ -46,9 +46,10 @@ export const overviewDataSchema = z
     power: z.union([
       z
         .object({
-          productionMw: z.number().finite().nonnegative(),
+          capacityMw: z.number().finite().nonnegative(),
           consumptionMw: z.number().finite().nonnegative(),
           headroomMw: z.number().finite(),
+          utilizationPercent: z.union([z.number().finite().nonnegative(), z.null()]),
           fuseTriggered: z.boolean(),
         })
         .strict(),
