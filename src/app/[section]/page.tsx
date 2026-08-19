@@ -1,5 +1,8 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { SectionStatus } from "@/features/sections/section-status";
+import { PowerPage } from "@/features/power/power-page";
+import { PowerDashboardLoading } from "@/features/power/power-dashboard";
 import { parseRuntimeConfig, resolvePublicServer } from "@/lib/server/config/runtime-config";
 
 const SECTIONS = {
@@ -21,6 +24,9 @@ type AsyncRecord = Promise<Record<string, string | string[] | undefined>>;
 export default async function PlannedSectionPage({ params, searchParams }: { params: Promise<{ section: string }>; searchParams: AsyncRecord }) {
   const { section } = await params;
   if (!(section in SECTIONS)) notFound();
+  if (section === "power") {
+    return <Suspense fallback={<PowerDashboardLoading />}><PowerPage searchParams={searchParams} /></Suspense>;
+  }
   const [title, description] = SECTIONS[section as Section];
   let serverName = "Server configuration unavailable";
   try {
