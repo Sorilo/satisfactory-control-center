@@ -97,6 +97,8 @@ curl --fail --silent 'http://127.0.0.1:3000/api/v1/power?serverId=main&range=6h&
 
 Keep `POWER_STREAM_ENABLED=false` for the initial current/history rollout. After ordinary Power requests pass, enable it in the external environment, recreate only Control Center, and validate the stream through the same public reverse-proxy/Tunnel hostname used by browsers—not only loopback. Require an initial `event: power`, periodic heartbeat comments, prompt disconnect cleanup, and no proxy buffering. If validation fails, set the flag back to false; the client continues using the curated Power HTTP route.
 
+When `TRUST_PROXY_HEADERS=false`, all public clients intentionally share one conservative rate-limit identity, so at most three Power streams can be active across the deployment. To use distinct per-client quotas, terminate access at a trusted proxy that strips and overwrites forwarded-client headers, set `TRUST_PROXY_HEADERS=true`, and prevent direct access to application port 3000.
+
 ## Enable and verify live FRM connectivity
 
 1. Set `DATA_MODE=live` and the reviewed `FRM_BASE_URL`/optional `FRM_TOKEN`, or `SERVERS_JSON`, in the external environment file.

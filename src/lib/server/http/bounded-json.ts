@@ -43,26 +43,45 @@ async function cancelBody(response: Response): Promise<void> {
 
 async function readBodyWithinLimit(
   response: Response,
-  maxResponseBytes: number
+  maxResponseBytes: number,
+  signal: AbortSignal
 ): Promise<Uint8Array> {
   if (response.body === null) return new Uint8Array();
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > maxResponseBytes) {
-      try {
-        await reader.cancel();
-      } catch {
-        // Preserve the stable size error even if upstream cancellation fails.
+  let rejectAborted: (reason: DOMException) => void = () => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAborted = reject;
+  });
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+    rejectAborted(new DOMException("aborted", "AbortError"));
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (signal.aborted) {
+        throw new DOMException("aborted", "AbortError");
       }
-      throw new UpstreamError("UPSTREAM_RESPONSE_TOO_LARGE");
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxResponseBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Preserve the stable size error even if upstream cancellation fails.
+        }
+        throw new UpstreamError("UPSTREAM_RESPONSE_TOO_LARGE");
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
   }
 
   const result = new Uint8Array(totalBytes);
@@ -120,7 +139,11 @@ export async function requestBoundedJson(
       }
     }
 
-    const bytes = await readBodyWithinLimit(response, options.maxResponseBytes);
+    const bytes = await readBodyWithinLimit(
+      response,
+      options.maxResponseBytes,
+      controller.signal
+    );
     try {
       return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     } catch {

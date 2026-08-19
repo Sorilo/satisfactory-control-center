@@ -131,6 +131,37 @@ describe("bounded JSON transport", () => {
     });
   });
 
+  it("enforces the request deadline while a successful response body is still streaming", async () => {
+    let cancellations = 0;
+    const fetcher = vi.fn<Fetcher>(async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise<void>(() => undefined);
+          },
+          cancel() {
+            cancellations += 1;
+          },
+        })
+      )
+    );
+
+    const outcome = await Promise.race([
+      requestBoundedJson({
+        url: "http://private/read",
+        fetcher,
+        timeoutMs: 5,
+        maxResponseBytes: 1_000,
+      }).catch((error: unknown) => error),
+      new Promise<"still-pending">((resolve) =>
+        setTimeout(() => resolve("still-pending"), 100)
+      ),
+    ]);
+
+    expect(outcome).toEqual(expect.objectContaining({ code: "UPSTREAM_TIMEOUT" }));
+    expect(cancellations).toBe(1);
+  });
+
   it("uses a strict caller schema and emits only sanitized typed errors", () => {
     const schema = z.object({ id: z.string() }).strict();
     expect(parseUpstream(schema, { id: "0" })).toEqual({ id: "0" });

@@ -37,6 +37,8 @@ The application provides a bounded in-memory token bucket suitable for the docum
 
 Forwarded client-IP headers are ignored by default. Set `TRUST_PROXY_HEADERS=true` only behind a trusted reverse proxy that strips and overwrites `X-Forwarded-For`/`X-Real-IP`; direct access to the application port must remain blocked in that mode.
 
+With the safe default `TRUST_PROXY_HEADERS=false`, every request deliberately uses one shared client key. For the Power SSE route, the per-client limit is therefore the effective deployment-wide cap (currently three concurrent streams), rather than the larger global cap. This fail-closed availability trade-off prevents spoofed forwarded headers from bypassing quotas. Distinct client quotas require the trusted-proxy topology above.
+
 ## Secrets
 
 Use Unraid/Docker environment injection or secret files; never build args. `.env*` is ignored except `.env.example`. Production database users must be read-only. Never paste or commit live credentials.

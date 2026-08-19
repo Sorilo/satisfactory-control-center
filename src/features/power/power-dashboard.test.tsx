@@ -87,4 +87,21 @@ describe("PowerDashboard", () => {
     expect(screen.getByText(/no power circuits reported/i)).toBeInTheDocument();
     expect(screen.queryByText(/current power unavailable/i)).not.toBeInTheDocument();
   });
+
+  it("renders a schema-valid large retained history without overflowing function arguments", () => {
+    const value = sample();
+    const baseTime = Date.parse("2026-08-03T18:00:00.000Z");
+    const points = Array.from({ length: 2_000 }, (_, index) => ({
+      timestamp: new Date(baseTime + index * 60_000).toISOString(),
+      value: 3_000 + (index % 100),
+    }));
+    value.data.history!.series = Array.from({ length: 70 }, (_, index) => ({
+      key: index % 2 === 0 ? "capacityMw" as const : "consumptionMw" as const,
+      circuitId: String(index + 1),
+      points,
+    }));
+
+    expect(() => render(<PowerDashboard envelope={value} dataMode="live" />)).not.toThrow();
+    expect(screen.getByRole("img", { name: /power history trend/i })).toBeInTheDocument();
+  });
 });

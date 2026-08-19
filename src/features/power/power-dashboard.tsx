@@ -32,14 +32,22 @@ const seriesLabel = (series: PowerHistorySeries) => ({
 }[series.key]);
 
 function historyPaths(series: PowerHistorySeries[]): Array<{ label: string; className: string; d: string }> {
-  const points = series.flatMap((item) => item.points);
-  if (points.length < 2) return [];
-  const times = points.map((point) => Date.parse(point.timestamp));
-  const values = points.map((point) => point.value);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  let pointCount = 0;
+  let minTime = Number.POSITIVE_INFINITY;
+  let maxTime = Number.NEGATIVE_INFINITY;
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+  for (const item of series) {
+    for (const point of item.points) {
+      const time = Date.parse(point.timestamp);
+      pointCount += 1;
+      minTime = Math.min(minTime, time);
+      maxTime = Math.max(maxTime, time);
+      minValue = Math.min(minValue, point.value);
+      maxValue = Math.max(maxValue, point.value);
+    }
+  }
+  if (pointCount < 2) return [];
   const timeSpan = Math.max(1, maxTime - minTime);
   const valueSpan = Math.max(1, maxValue - minValue);
   return series
