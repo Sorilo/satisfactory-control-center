@@ -21,6 +21,7 @@ const populatedCircuit = {
   PowerMaxConsumed: 11,
   BatteryDifferential: -3,
   BatteryPercent: 50,
+  BatteryCapacity: 500,
   BatteryTimeEmpty: "01:02:03",
   BatteryTimeFull: "garbage",
   AssociatedCircuits: [10, 11],
@@ -64,16 +65,27 @@ describe("FRM power adapter", () => {
           utilizationPercent: 25,
           fuseTriggered: false,
           associatedCircuitCount: 1,
-          battery: {
-            chargePercent: 0,
-            netFlowMw: 0,
-            secondsToEmpty: 0,
-            secondsToFull: 0,
-          },
+          battery: null,
         },
       ],
     });
     expect(JSON.stringify(state)).not.toMatch(/PowerProduction|productionMw|999/);
+  });
+
+  it("maps the all-zero no-capacity battery sentinel to null rather than a zeroed battery", async () => {
+    // The live fixture carries BatteryCapacity 0 alongside BatteryInput/Output/
+    // Differential/Percent 0 and "00:00:00" times. That is the upstream "no
+    // battery installed" sentinel and must not surface as a fabricated zeroed
+    // battery with 0% charge and a 0s empty/full estimate.
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async () => jsonResponse(liveFixture),
+    });
+    const state = await adapter.getPower();
+    expect(state.circuits).toHaveLength(1);
+    expect(state.circuits[0]!.battery).toBeNull();
+    expect(state.circuits[0]!.capacityMw).toBe(20);
+    expect(state.circuits[0]!.consumptionMw).toBe(5);
   });
 
   it("normalizes the sanitized empty fixture as live no-circuits", async () => {

@@ -81,6 +81,16 @@ class FakeEventSource {
     for (const listener of this.listeners.get("power") ?? []) listener(event);
   }
 
+  emitDetails(value: unknown) {
+    const event = new MessageEvent("power-details", { data: JSON.stringify(value) });
+    for (const listener of this.listeners.get("power-details") ?? []) listener(event);
+  }
+
+  emitRaw(type: string, data: string) {
+    const event = new MessageEvent(type, { data });
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+
   fail() {
     this.onerror?.(new Event("error"));
   }
@@ -154,5 +164,84 @@ describe("PowerDashboard realtime recovery", () => {
       /polling fallback/i
     );
     expect(FakeEventSource.instances).toHaveLength(3);
+  });
+
+  it("merges power-details events into generators/consumers while preserving totals and circuits", async () => {
+    render(<PowerDashboard envelope={envelope()} dataMode="live" streamEnabled />);
+
+    act(() => {
+      FakeEventSource.instances[0]!.open();
+      FakeEventSource.instances[0]!.emitPower(streamSnapshot(200));
+    });
+    expect(await screen.findByText("0.20 GW")).toBeInTheDocument();
+
+    act(() => {
+      FakeEventSource.instances[0]!.emitDetails({
+        observedAt: "2026-08-18T18:00:10.000Z",
+        generators: {
+          state: "live",
+          items: [{
+            name: "Coal Generator",
+            circuit: { state: "connected", id: "0" },
+            fuelType: "coal",
+            fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
+            productionCapacityMw: 75,
+            loadPercent: 50,
+            canStart: true,
+            fuseTriggered: false,
+          }],
+        },
+        majorConsumers: {
+          state: "live",
+          items: [{
+            name: "Assembler Bank",
+            circuit: { state: "connected", id: "0" },
+            consumptionMw: 3,
+            maximumConsumptionMw: 5,
+            fuseTriggered: false,
+          }],
+        },
+      });
+    });
+
+    expect(await screen.findByText("Coal Generator")).toBeInTheDocument();
+    expect(screen.getByText("Assembler Bank")).toBeInTheDocument();
+    // Aggregate totals stay from the power event; details never clobber them.
+    expect(screen.getByText("0.20 GW")).toBeInTheDocument();
+    expect(screen.queryByText(/generator details unavailable/i)).not.toBeInTheDocument();
+  });
+
+  it("ignores malformed power-details events without failing or closing the healthy stream", async () => {
+    render(<PowerDashboard envelope={envelope()} dataMode="live" streamEnabled />);
+    const source = FakeEventSource.instances[0]!;
+
+    act(() => {
+      source.open();
+      source.emitPower(streamSnapshot(200));
+    });
+    expect(await screen.findByText("0.20 GW")).toBeInTheDocument();
+
+    // Raw non-JSON detail payload: ignored, never treated as a stream error.
+    act(() => source.emitRaw("power-details", "not-json{{"));
+    expect(source.closed).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(screen.getByRole("status", { name: /power refresh status/i })).toHaveTextContent(
+      /realtime live/i
+    );
+    expect(screen.getByText(/generator details unavailable/i)).toBeInTheDocument();
+
+    // Schema-invalid JSON detail payload: also ignored, stream still healthy.
+    act(() => {
+      source.emitDetails({
+        observedAt: 12345,
+        generators: { state: "bogus", items: [] },
+        majorConsumers: { state: "bogus", items: [] },
+      });
+    });
+    expect(source.closed).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(screen.getByRole("status", { name: /power refresh status/i })).toHaveTextContent(
+      /realtime live/i
+    );
   });
 });

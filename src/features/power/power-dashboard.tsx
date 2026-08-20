@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
+  powerDetailsStreamSnapshotSchema,
   powerEnvelopeSchema,
   powerStreamSnapshotSchema,
   type PowerEnvelope,
 } from "@/contracts/power-contracts";
 import type {
+  PowerBattery,
   PowerHistoryRange,
   PowerHistoryResolution,
   PowerHistorySeries,
 } from "@/domain/power";
+import {
+  TelemetryTimeSeriesChart,
+  type TelemetryPoint,
+  type TelemetrySeries,
+} from "@/components/telemetry-time-series-chart";
 
 export interface PowerDashboardProps {
   envelope: PowerEnvelope;
@@ -25,42 +32,134 @@ const RESOLUTIONS = ["auto", "1m", "5m", "15m", "1h"] as const;
 
 const formatGw = (mw: number) => `${(mw / 1000).toFixed(2)} GW`;
 const formatMw = (mw: number) => `${mw.toLocaleString("en-US", { maximumFractionDigits: 1 })} MW`;
+const formatPercent = (percent: number) => `${percent.toFixed(1)}%`;
 const seriesLabel = (series: PowerHistorySeries) => ({
   capacityMw: "Capacity",
   consumptionMw: "Consumption",
   correctedMaximumConsumptionMw: "Maximum demand",
 }[series.key]);
 
-function historyPaths(series: PowerHistorySeries[]): Array<{ label: string; className: string; d: string }> {
-  let pointCount = 0;
-  let minTime = Number.POSITIVE_INFINITY;
-  let maxTime = Number.NEGATIVE_INFINITY;
-  let minValue = Number.POSITIVE_INFINITY;
-  let maxValue = Number.NEGATIVE_INFINITY;
-  for (const item of series) {
-    for (const point of item.points) {
-      const time = Date.parse(point.timestamp);
-      pointCount += 1;
-      minTime = Math.min(minTime, time);
-      maxTime = Math.max(maxTime, time);
-      minValue = Math.min(minValue, point.value);
-      maxValue = Math.max(maxValue, point.value);
+const SERIES_COLORS: Record<PowerHistorySeries["key"], string> = {
+  capacityMw: "#59d38c",
+  consumptionMw: "#f47a24",
+  correctedMaximumConsumptionMw: "#f2bd4d",
+};
+
+/** Floors seconds to whole minutes; <1h renders "42m", >=1h renders "1h 2m". */
+function formatBatteryDuration(seconds: number): string {
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours >= 1 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+/** Chooses direction from the non-null estimate; empty wins when both exist. */
+function batteryDurationLabel(battery: PowerBattery): string {
+  if (battery.secondsToEmpty !== null) {
+    return `${formatBatteryDuration(battery.secondsToEmpty)} to empty`;
+  }
+  if (battery.secondsToFull !== null) {
+    return `${formatBatteryDuration(battery.secondsToFull)} to full`;
+  }
+  return "";
+}
+
+function formatBatteryCell(battery: PowerBattery): string {
+  const base = `${battery.chargePercent.toFixed(0)}% · ${formatMw(battery.netFlowMw)}`;
+  const duration = batteryDurationLabel(battery);
+  return duration ? `${base} · ${duration}` : base;
+}
+
+function formatChartTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/**
+ * Translate history series into chart series. Base capacity/consumption/
+ * corrected-maximum series are drawn; per-circuit headroom and utilization are
+ * derived client-side from the exact intersection of capacity and consumption
+ * timestamps and appear only in the tooltip (not as independent lines).
+ *
+ * Derived series are marked `sampleMode: "exact"` so the chart reports them
+ * only at the shared timestamps they actually contain, while the raw series
+ * keep nearest-point snapping. Exported as a pure helper so tests can assert
+ * the transformation (and its exact-intersection semantics) directly.
+ */
+export function buildChartSeries(historySeries: PowerHistorySeries[]): TelemetrySeries[] {
+  const base: TelemetrySeries[] = historySeries.map((item) => ({
+    id: `${item.circuitId}:${item.key}`,
+    label: `${seriesLabel(item)} · Circuit ${item.circuitId}`,
+    color: SERIES_COLORS[item.key],
+    points: item.points.map((point) => ({
+      timestamp: Date.parse(point.timestamp),
+      value: point.value,
+    })),
+    formatValue: formatMw,
+  }));
+
+  const byCircuit = new Map<
+    string,
+    { capacity?: PowerHistorySeries; consumption?: PowerHistorySeries }
+  >();
+  for (const item of historySeries) {
+    let entry = byCircuit.get(item.circuitId);
+    if (!entry) {
+      entry = {};
+      byCircuit.set(item.circuitId, entry);
+    }
+    if (item.key === "capacityMw") entry.capacity = item;
+    else if (item.key === "consumptionMw") entry.consumption = item;
+  }
+
+  const derived: TelemetrySeries[] = [];
+  for (const [circuitId, entry] of byCircuit) {
+    const capacity = entry.capacity;
+    const consumption = entry.consumption;
+    if (!capacity || !consumption) continue;
+    const consumptionByTime = new Map(
+      consumption.points.map((point) => [Date.parse(point.timestamp), point.value])
+    );
+    const headroomPoints: TelemetryPoint[] = [];
+    const utilizationPoints: TelemetryPoint[] = [];
+    for (const point of capacity.points) {
+      const timestamp = Date.parse(point.timestamp);
+      const consumptionValue = consumptionByTime.get(timestamp);
+      if (consumptionValue === undefined) continue;
+      headroomPoints.push({ timestamp, value: point.value - consumptionValue });
+      if (point.value > 0) {
+        utilizationPoints.push({ timestamp, value: (consumptionValue / point.value) * 100 });
+      }
+    }
+    if (headroomPoints.length > 0) {
+      derived.push({
+        id: `${circuitId}:headroomMw`,
+        label: `Headroom · Circuit ${circuitId}`,
+        points: headroomPoints,
+        hidden: true,
+        sampleMode: "exact",
+        formatValue: formatMw,
+      });
+    }
+    if (utilizationPoints.length > 0) {
+      derived.push({
+        id: `${circuitId}:utilizationPercent`,
+        label: `Utilization · Circuit ${circuitId}`,
+        points: utilizationPoints,
+        hidden: true,
+        sampleMode: "exact",
+        formatValue: formatPercent,
+      });
     }
   }
-  if (pointCount < 2) return [];
-  const timeSpan = Math.max(1, maxTime - minTime);
-  const valueSpan = Math.max(1, maxValue - minValue);
-  return series
-    .filter((item) => item.points.length > 1)
-    .map((item) => ({
-      label: `${seriesLabel(item)} · Circuit ${item.circuitId}`,
-      className: `power-chart__line power-chart__line--${item.key}`,
-      d: item.points.map((point, index) => {
-        const x = 24 + ((Date.parse(point.timestamp) - minTime) / timeSpan) * 752;
-        const y = 196 - ((point.value - minValue) / valueSpan) * 164;
-        return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(" "),
-    }));
+
+  return [...base, ...derived];
 }
 
 export function PowerDashboardLoading() {
@@ -92,8 +191,18 @@ export function PowerDashboard({
   const requestedRange = selectedRange ?? history?.coverage.requestedRange ?? "1h";
   const requestedResolution = selectedResolution ?? "auto";
   const effectiveResolution = history?.coverage.effectiveResolution ?? "1m";
-  const chartPaths = historyPaths(history?.series ?? []);
-  const historyPointCount = history?.series.reduce((count, item) => count + item.points.length, 0) ?? 0;
+  // Both derivations depend only on the retained history series, so memoize
+  // them on that reference: live current updates re-render the dashboard but
+  // must not re-parse timestamps or rebuild/downsample the chart series.
+  const historyPointCount = useMemo(
+    () => history?.series.reduce((count, item) => count + item.points.length, 0) ?? 0,
+    [history?.series]
+  );
+  const chartSeries = useMemo(
+    () => buildChartSeries(history?.series ?? []),
+    [history?.series]
+  );
+  const drawableSeries = chartSeries.filter((item) => !item.hidden && item.points.length >= 2);
 
   useEffect(() => {
     if (streamEnabled === undefined) return;
@@ -178,6 +287,29 @@ export function PowerDashboard({
         } catch {
           fail();
         }
+      });
+      candidate.addEventListener("power-details", (event) => {
+        if (disposed || source !== candidate) return;
+        let details: ReturnType<typeof powerDetailsStreamSnapshotSchema.parse>;
+        try {
+          const message = event as MessageEvent<string>;
+          details = powerDetailsStreamSnapshotSchema.parse(JSON.parse(message.data));
+        } catch {
+          // Detail telemetry is optional and independently degraded. A
+          // malformed details event must never fail/close the healthy stream;
+          // ignore it and keep whatever details (if any) we already have.
+          return;
+        }
+        setCurrent((previous) =>
+          previous
+            ? {
+                ...previous,
+                generators: details.generators,
+                majorConsumers: details.majorConsumers,
+              }
+            : previous
+        );
+        setRefreshStatus("Realtime live");
       });
     };
 
@@ -271,21 +403,31 @@ export function PowerDashboard({
         </div>
         {!history ? (
           <div className="power-chart-empty"><h2>Power history unavailable</h2><p>Historical source unavailable. Current FRM data remains independent and visible above.</p></div>
-        ) : historyPointCount > 0 ? (
+        ) : historyPointCount === 0 ? (
+          <div className="power-chart-empty"><h2>No retained samples</h2><p>The history source answered successfully but has no samples for this range.</p></div>
+        ) : (
           <>
-            {chartPaths.length ? <>
-              <svg className="power-chart" viewBox="0 0 800 220" role="img" aria-label="Power history trend">
-                <g className="power-chart__grid" aria-hidden="true">
-                  {[32, 73, 114, 155, 196].map((y) => <line key={y} x1="24" x2="776" y1={y} y2={y} />)}
-                </g>
-                {chartPaths.map((path) => <path key={path.label} className={path.className} d={path.d} vectorEffect="non-scaling-stroke" />)}
-              </svg>
-              <ul className="power-chart-legend">{chartPaths.map((path) => <li key={path.label}>{path.label}</li>)}</ul>
-            </> : <div className="power-chart-empty"><h2>{historyPointCount === 1 ? "One retained sample" : "Retained samples"}</h2><p>There are not yet enough points to draw a trend. Values remain available in the summary.</p></div>}
+            {drawableSeries.length > 0 ? (
+              <>
+                <TelemetryTimeSeriesChart
+                  series={chartSeries}
+                  height={240}
+                  formatValue={formatMw}
+                  formatTime={formatChartTime}
+                  ariaLabel="Power history trend"
+                  emptyLabel="No telemetry samples"
+                />
+                <ul className="power-chart-legend">
+                  {drawableSeries.map((item) => (
+                    <li key={item.id} style={{ "--legend-color": item.color } as CSSProperties}>{item.label}</li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <div className="power-chart-empty"><h2>{historyPointCount === 1 ? "One retained sample" : "Retained samples"}</h2><p>There are not yet enough points to draw a trend. Values remain available in the summary.</p></div>
+            )}
             <div className="power-history-summary-wrap"><table className="power-history-summary" aria-label="Power history series summary"><thead><tr><th>Series</th><th>Circuit</th><th>Latest</th><th>Samples</th></tr></thead><tbody>{history.series.map((item) => <tr key={`${item.key}:${item.circuitId}`}><th scope="row">{seriesLabel(item)}</th><td>Circuit {item.circuitId}</td><td>{item.points.length ? formatMw(item.points[item.points.length - 1]!.value) : "—"}</td><td>{item.points.length} {item.points.length === 1 ? "sample" : "samples"}</td></tr>)}</tbody></table></div>
           </>
-        ) : (
-          <div className="power-chart-empty"><h2>No retained samples</h2><p>The history source answered successfully but has no samples for this range.</p></div>
         )}
         {history ? <p className="power-production-note">Historical production is not collected; charts show capacity, consumption, and corrected maximum demand only.</p> : null}
       </section>
@@ -293,7 +435,7 @@ export function PowerDashboard({
       {current?.circuits.length ? (
         <section className="panel power-circuits-panel">
           <div className="panel__heading"><div><p className="eyebrow">Current topology</p><h2>Circuits</h2></div><span className="count-badge">{current.circuits.length}</span></div>
-          <div className="power-table-wrap"><table className="power-table" aria-label="Current power circuits"><thead><tr><th>Circuit</th><th>Capacity</th><th>Demand</th><th>Headroom</th><th>Utilization</th><th>Battery</th><th>Fuse</th></tr></thead><tbody>{current.circuits.map((circuit) => <tr key={circuit.id}><th scope="row">{circuit.id}</th><td>{formatMw(circuit.capacityMw)}</td><td>{formatMw(circuit.consumptionMw)}</td><td>{formatMw(circuit.headroomMw)}</td><td>{circuit.utilizationPercent === null ? "—" : `${circuit.utilizationPercent.toFixed(1)}%`}</td><td>{circuit.battery ? `${circuit.battery.chargePercent.toFixed(0)}% · ${formatMw(circuit.battery.netFlowMw)}` : "Not reported"}</td><td><span className={`signal-pill ${circuit.fuseTriggered ? "signal-pill--bad" : "signal-pill--good"}`}>{circuit.fuseTriggered ? "Tripped" : "Ready"}</span></td></tr>)}</tbody></table></div>
+          <div className="power-table-wrap"><table className="power-table" aria-label="Current power circuits"><thead><tr><th>Circuit</th><th>Capacity</th><th>Demand</th><th>Headroom</th><th>Utilization</th><th>Battery</th><th>Fuse</th></tr></thead><tbody>{current.circuits.map((circuit) => <tr key={circuit.id}><th scope="row">{circuit.id}</th><td>{formatMw(circuit.capacityMw)}</td><td>{formatMw(circuit.consumptionMw)}</td><td>{formatMw(circuit.headroomMw)}</td><td>{circuit.utilizationPercent === null ? "—" : `${circuit.utilizationPercent.toFixed(1)}%`}</td><td>{circuit.battery ? formatBatteryCell(circuit.battery) : "Not reported"}</td><td><span className={`signal-pill ${circuit.fuseTriggered ? "signal-pill--bad" : "signal-pill--good"}`}>{circuit.fuseTriggered ? "Tripped" : "Ready"}</span></td></tr>)}</tbody></table></div>
         </section>
       ) : null}
 

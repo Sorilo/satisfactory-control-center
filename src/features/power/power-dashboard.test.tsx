@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PowerEnvelope } from "@/contracts/power-contracts";
-import { PowerDashboard } from "./power-dashboard";
+import { buildChartSeries, PowerDashboard } from "./power-dashboard";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function sample(): PowerEnvelope {
   return {
@@ -50,7 +53,7 @@ describe("PowerDashboard", () => {
     expect(kpis.getByText("3.10 GW")).toBeInTheDocument();
     expect(kpis.getByText("1.90 GW")).toBeInTheDocument();
     expect(kpis.getByText("62.0%")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /power history trend/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /power history trend/i })).toBeInTheDocument();
     expect(screen.getByText(/partial retained coverage/i)).toBeInTheDocument();
     expect(screen.getByText(/generator details unavailable/i)).toBeInTheDocument();
     expect(screen.getByText(/major-consumer details unavailable/i)).toBeInTheDocument();
@@ -66,7 +69,7 @@ describe("PowerDashboard", () => {
     value.unavailableSources = ["frm"];
     render(<PowerDashboard envelope={value} dataMode="live" />);
     expect(screen.getByText(/current power unavailable/i)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /power history trend/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /power history trend/i })).toBeInTheDocument();
   });
 
   it("keeps current data visible when history is unavailable", () => {
@@ -102,6 +105,88 @@ describe("PowerDashboard", () => {
     }));
 
     expect(() => render(<PowerDashboard envelope={value} dataMode="live" />)).not.toThrow();
-    expect(screen.getByRole("img", { name: /power history trend/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /power history trend/i })).toBeInTheDocument();
+  });
+
+  it("derives headroom and utilization client-side in the chart tooltip with clean MW/percent formatting", () => {
+    const { container } = render(<PowerDashboard envelope={sample()} dataMode="live" />);
+    const slider = screen.getByRole("slider", { name: /scrub telemetry timeline/i });
+    slider.focus();
+    fireEvent.keyDown(slider, { key: "End" });
+
+    const tooltip = container.querySelector(".ttsc__tooltip");
+    expect(tooltip).not.toBeNull();
+    expect(tooltip).toHaveTextContent("Capacity · Circuit 7");
+    expect(tooltip).toHaveTextContent("5,000 MW");
+    expect(tooltip).toHaveTextContent("Consumption · Circuit 7");
+    expect(tooltip).toHaveTextContent("3,100 MW");
+    expect(tooltip).toHaveTextContent("Maximum demand · Circuit 7");
+    expect(tooltip).toHaveTextContent("3,400 MW");
+    expect(tooltip).toHaveTextContent("Headroom · Circuit 7");
+    expect(tooltip).toHaveTextContent("1,900 MW");
+    expect(tooltip).toHaveTextContent("Utilization · Circuit 7");
+    expect(tooltip).toHaveTextContent("62.0%");
+  });
+
+  it("buildChartSeries derives headroom/utilization only at exact intersections with exact sampling", () => {
+    const series = buildChartSeries([
+      {
+        key: "capacityMw",
+        circuitId: "7",
+        points: [
+          { timestamp: "2026-08-18T17:00:00.000Z", value: 100 },
+          { timestamp: "2026-08-18T18:00:00.000Z", value: 200 },
+        ],
+      },
+      {
+        key: "consumptionMw",
+        circuitId: "7",
+        points: [
+          { timestamp: "2026-08-18T17:30:00.000Z", value: 60 },
+          { timestamp: "2026-08-18T18:00:00.000Z", value: 80 },
+        ],
+      },
+    ]);
+
+    const headroom = series.find((item) => item.id === "7:headroomMw");
+    expect(headroom).toBeDefined();
+    expect(headroom!.hidden).toBe(true);
+    expect(headroom!.sampleMode).toBe("exact");
+    // 17:00 capacity has no consumption pair and 17:30 consumption has no
+    // capacity pair; only the shared 18:00 timestamp survives.
+    expect(headroom!.points.map((point) => point.timestamp)).toEqual([
+      Date.parse("2026-08-18T18:00:00.000Z"),
+    ]);
+    expect(headroom!.points[0]!.value).toBe(120);
+
+    const utilization = series.find((item) => item.id === "7:utilizationPercent");
+    expect(utilization).toBeDefined();
+    expect(utilization!.hidden).toBe(true);
+    expect(utilization!.sampleMode).toBe("exact");
+    expect(utilization!.points[0]!.value).toBe(40);
+  });
+
+  it("memoizes chart series so live current updates do not re-parse history timestamps", () => {
+    const value = sample();
+    const { rerender } = render(<PowerDashboard envelope={value} dataMode="live" />);
+
+    const parseSpy = vi.spyOn(Date, "parse");
+    const callsAfterMount = parseSpy.mock.calls.length;
+
+    // Refresh only the current snapshot while keeping the identical history
+    // series reference; memoized chart series must not re-run Date.parse.
+    const updated = {
+      ...value,
+      data: {
+        ...value.data,
+        current: {
+          ...value.data.current!,
+          totals: { ...value.data.current!.totals, consumptionMw: 3200 },
+        },
+      },
+    };
+    rerender(<PowerDashboard envelope={updated} dataMode="live" />);
+
+    expect(parseSpy.mock.calls.length).toBe(callsAfterMount);
   });
 });

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  powerDetailsStreamSnapshotSchema,
   powerEffectiveResolutionSchema,
   powerEnvelopeSchema,
   powerHistoryRequestSchema,
   powerQuerySchema,
   powerRangeSchema,
   powerResolutionSchema,
+  type PowerDetailsStreamSnapshot,
   type PowerEnvelope,
 } from "./power-contracts";
 
@@ -379,5 +381,128 @@ describe("power v1 contracts", () => {
     expect(() =>
       powerQuerySchema.parse({ serverId: "main", range: "24h", resolution: "auto", extra: "1" })
     ).toThrow();
+  });
+});
+
+describe("power v1 details stream contract", () => {
+  function validDetails(): PowerDetailsStreamSnapshot {
+    return {
+      observedAt: "2026-08-18T18:00:00.000Z",
+      generators: {
+        state: "live",
+        items: [
+          {
+            name: "Coal Generator",
+            circuit: { state: "connected", id: "0" },
+            fuelType: "coal",
+            fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
+            productionCapacityMw: 75,
+            loadPercent: 50,
+            canStart: true,
+            fuseTriggered: false,
+          },
+        ],
+      },
+      majorConsumers: {
+        state: "live",
+        items: [
+          {
+            name: "Assembler Bank",
+            circuit: { state: "connected", id: "0" },
+            consumptionMw: 3,
+            maximumConsumptionMw: 5,
+            fuseTriggered: false,
+          },
+        ],
+      },
+    };
+  }
+
+  it("accepts a strict live details snapshot", () => {
+    expect(() => powerDetailsStreamSnapshotSchema.parse(validDetails())).not.toThrow();
+  });
+
+  it("accepts independently unavailable detail groups", () => {
+    const generatorsOnly = validDetails();
+    generatorsOnly.generators = { state: "unavailable", items: [] };
+    expect(() => powerDetailsStreamSnapshotSchema.parse(generatorsOnly)).not.toThrow();
+
+    const both = validDetails();
+    both.generators = { state: "unavailable", items: [] };
+    both.majorConsumers = { state: "unavailable", items: [] };
+    expect(() => powerDetailsStreamSnapshotSchema.parse(both)).not.toThrow();
+  });
+
+  it("rejects unknown top-level and nested keys", () => {
+    const top = { ...validDetails(), serverId: "main" } as never;
+    expect(() => powerDetailsStreamSnapshotSchema.parse(top)).toThrow();
+
+    const nested = validDetails();
+    nested.generators.items[0] = {
+      ...nested.generators.items[0]!,
+      ClassName: "Build_GeneratorCoal_C",
+    } as never;
+    expect(() => powerDetailsStreamSnapshotSchema.parse(nested)).toThrow();
+  });
+
+  it("caps generators at 100 and major consumers at 10", () => {
+    const generators = validDetails();
+    generators.generators.items = Array.from({ length: 101 }, (_, i) => ({
+      name: `Generator ${i}`,
+      circuit: { state: "connected" as const, id: "0" },
+      fuelType: "coal" as const,
+      fuelInventory: null,
+      productionCapacityMw: 1,
+      loadPercent: 0,
+      canStart: true,
+      fuseTriggered: false,
+    }));
+    expect(() => powerDetailsStreamSnapshotSchema.parse(generators)).toThrow();
+
+    const consumers = validDetails();
+    consumers.majorConsumers.items = Array.from({ length: 11 }, (_, i) => ({
+      name: `Consumer ${i}`,
+      circuit: { state: "connected" as const, id: "0" },
+      consumptionMw: 1,
+      maximumConsumptionMw: 1,
+      fuseTriggered: false,
+    }));
+    expect(() => powerDetailsStreamSnapshotSchema.parse(consumers)).toThrow();
+  });
+
+  it("rejects raw and private detail fields", () => {
+    const leaks = [
+      { location: { x: 0, y: 0, z: 0 } },
+      { PowerInfo: { CircuitGroupID: 0 } },
+      { BaseProd: 0 },
+      { DynamicProdCapacity: 0 },
+      { RegulatedDemandProd: 0 },
+      { FuelResource: "Coal" },
+      { ProductionCapacity: 75 },
+      { ID: "generator-1" },
+    ];
+    for (const leak of leaks) {
+      const details = validDetails();
+      details.generators.items[0] = {
+        ...details.generators.items[0]!,
+        ...leak,
+      } as never;
+      expect(() => powerDetailsStreamSnapshotSchema.parse(details)).toThrow();
+    }
+  });
+
+  it("requires a non-empty observedAt", () => {
+    const details = validDetails();
+    details.observedAt = "";
+    expect(() => powerDetailsStreamSnapshotSchema.parse(details)).toThrow();
+  });
+
+  it("rejects contradictory detail circuit states", () => {
+    const details = validDetails();
+    details.generators.items[0] = {
+      ...details.generators.items[0]!,
+      circuit: { state: "connected", id: "-1" },
+    } as never;
+    expect(() => powerDetailsStreamSnapshotSchema.parse(details)).toThrow();
   });
 });

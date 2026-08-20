@@ -23,7 +23,7 @@ Public input is untrusted. Upstream services and credentials are server-only. Th
 | Credential leakage | server-only modules; sanitized responses/logs; runtime secrets |
 | SQL/PromQL injection | fixed methods/templates; parameterized SQL; bounded inputs |
 | Upstream amplification | cache coalescing, request limits, fixed range/size bounds |
-| SSE exhaustion | Power stream has per-client/global connection limits, bounded frames, heartbeats, backpressure coalescing, abort/cancel cleanup, and an opt-in runtime flag |
+| SSE exhaustion | Power stream has per-client/global connection limits, bounded frames (power and power-details), heartbeats, per-channel backpressure coalescing, abort/cancel cleanup, and an opt-in runtime flag; a malformed or oversized detail event detaches only that connection's detail channel |
 | XSS/clickjacking | React escaping, CSP, `frame-ancestors 'none'`, no raw HTML |
 | Dependency compromise | lockfile, Dependabot, CI build/test and production dependency audit; image scanning is a release hardening gate |
 | Private telemetry exposure | server-side privacy filtering, public-only server registry |
