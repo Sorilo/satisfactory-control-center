@@ -18,7 +18,8 @@ export default defineConfig({
       SERVERS_JSON: JSON.stringify([
         { id: "main", displayName: "Main World", enabled: true, public: true },
         { id: "beta", displayName: "Beta World", enabled: true, public: true }
-      ])
+      ]),
+      POWER_STREAM_ENABLED: "true"
     }
   },
   projects: [

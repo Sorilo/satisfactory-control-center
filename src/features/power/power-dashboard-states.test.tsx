@@ -252,6 +252,33 @@ describe("PowerDashboard state matrix", () => {
     expect(screen.getByText(/historical production is not collected/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /power history trend/i })).not.toBeInTheDocument();
   });
+
+  it("renders unsupported retention as a bounded state and exposes custom controls", () => {
+    const value = envelope();
+    value.data.history!.coverage = {
+      ...value.data.history!.coverage,
+      state: "unsupported",
+      reason: "retention-unavailable",
+      requestedRange: "1y",
+      effectiveResolution: "1h",
+      oldestSampleAt: null,
+      newestSampleAt: null,
+    };
+    value.data.history!.series = [];
+    render(
+      <PowerDashboard
+        envelope={value}
+        dataMode="live"
+        selectedRange="custom"
+        selectedResolution="auto"
+      />
+    );
+    expect(screen.getByRole("heading", { name: /requested history is not available/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/15-day retention horizon/i)).toHaveLength(2);
+    expect(screen.getByLabelText("Start")).toHaveAttribute("type", "datetime-local");
+    expect(screen.getByLabelText("End")).toHaveAttribute("type", "datetime-local");
+  });
+
 });
 
 /*

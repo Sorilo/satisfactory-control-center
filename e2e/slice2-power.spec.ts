@@ -21,7 +21,7 @@ test.describe("Slice 2 Power", () => {
     await expect(page.getByRole("heading", { name: "Major consumers" })).toBeVisible();
     await expect(page.getByText("Miner Mk.1")).toBeVisible();
     await expect(page.getByRole("status", { name: "Power refresh status" })).toContainText(
-      /Polling (fallback|degraded)/
+      /Realtime live/
     );
 
     await page.getByRole("link", { name: "7d", exact: true }).click();
@@ -30,6 +30,93 @@ test.describe("Slice 2 Power", () => {
     await expect(page.locator("body")).not.toContainText(privateTerms);
 
     await page.screenshot({ path: "test-results/power-desktop.png", fullPage: true });
+  });
+
+  test("applies a named power SSE event to the rendered DOM without navigation", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "desktop realtime evidence runs in the Chromium project");
+    let streamRequests = 0;
+    const snapshot = {
+      observedAt: "2026-08-18T18:01:00.000Z",
+      topologyState: "available",
+      totals: {
+        capacityMw: 9_500,
+        consumptionMw: 6_250,
+        reportedMaximumConsumptionMw: 7_100,
+        headroomMw: 3_250,
+        utilizationPercent: (6_250 / 9_500) * 100,
+        fuseTriggered: false,
+      },
+      circuits: [],
+    };
+    await page.route(/\/api\/v1\/power\/stream\?serverId=main$/, async (route) => {
+      streamRequests += 1;
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+        body: `retry: 5000\nid: main:browser-regression\nevent: power\ndata: ${JSON.stringify(snapshot)}\n\n`,
+      });
+    });
+
+    await page.goto("/power");
+    const urlAfterNavigation = page.url();
+    await expect(page.getByText("9.50 GW", { exact: true })).toBeVisible();
+    expect(streamRequests).toBeGreaterThan(0);
+    expect(page.url()).toBe(urlAfterNavigation);
+    await expect(page.getByRole("status", { name: "Power refresh status" })).toContainText(
+      /Realtime live|Reconnecting realtime/
+    );
+  });
+
+  test("applies a named power-details SSE event to generator and consumer DOM without navigation", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "desktop realtime evidence runs in the Chromium project");
+    let streamRequests = 0;
+    const details = {
+      observedAt: "2026-08-18T18:01:00.000Z",
+      generators: {
+        state: "live",
+        items: [{
+          name: "Coal Generator",
+          circuit: { state: "connected", id: "0" },
+          fuelType: "coal",
+          fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
+          productionCapacityMw: 75,
+          loadPercent: 50,
+          canStart: true,
+          fuseTriggered: false,
+        }],
+      },
+      majorConsumers: {
+        state: "live",
+        items: [{
+          name: "Assembler Bank",
+          circuit: { state: "connected", id: "0" },
+          consumptionMw: 3,
+          maximumConsumptionMw: 5,
+          fuseTriggered: false,
+        }],
+      },
+    };
+    await page.route(/\/api\/v1\/power\/stream\?serverId=main$/, async (route) => {
+      streamRequests += 1;
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+        body: `retry: 5000\nid: main:browser-details-regression\nevent: power-details\ndata: ${JSON.stringify(details)}\n\n`,
+      });
+    });
+
+    await page.goto("/power");
+    const urlAfterNavigation = page.url();
+    await expect(page.getByText("Coal Generator", { exact: true })).toBeVisible();
+    await expect(page.getByText("Assembler Bank", { exact: true })).toBeVisible();
+    expect(streamRequests).toBeGreaterThan(0);
+    expect(page.url()).toBe(urlAfterNavigation);
   });
 
   test("remains usable without document overflow on a narrow mobile viewport", async ({ page }, testInfo) => {

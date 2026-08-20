@@ -2,6 +2,26 @@
 
 All notable release changes are documented here.
 
+## [0.2.0-rc.3] - 2026-08-20
+
+### Added
+
+- Browser-proven named `power` and `power-details` SSE delivery with React DOM updates and safe default-message fallback.
+- Bounded retained-history refresh, independent range/resolution controls, custom-range validation, and explicit unsupported retention/resolution states.
+- Shared 15-day retention and 2,000-point-per-series planning bounds enforced before Prometheus queries.
+
+### Changed
+
+- Release identity, Compose defaults, and deployment guidance now target `v0.2.0-rc.3`; `POWER_STREAM_ENABLED` remains supported and disabled by default.
+- Long ranges remain contract-visible but return structured unsupported coverage under current retention; no fabricated samples are produced.
+
+### Boundaries
+
+- No final `v0.2.0`, Slice 3, PostgreSQL persistence, map/location contract, viewport zoom, or `15m/1s` live trace.
+- RC.2 remains the immediate rollback candidate; no existing RC tag or release is overwritten.
+
+See [`docs/releases/v0.2.0-rc.3.md`](docs/releases/v0.2.0-rc.3.md) for validation, history contract, and rollback guidance.
+
 ## [0.2.0-rc.2] - 2026-08-20
 
 ### Added

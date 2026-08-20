@@ -50,11 +50,42 @@ function streamSnapshot(capacityMw: number): PowerStreamSnapshot {
   };
 }
 
+function envelopeWithHistory(): PowerEnvelope {
+  const value = envelope();
+  value.freshness.history = {
+    state: "live",
+    observedAt: "2026-08-18T18:00:00.000Z",
+  };
+  value.data.history = {
+    coverage: {
+      state: "complete",
+      requestedRange: "1h",
+      effectiveResolution: "1m",
+      retentionHorizonDays: 15,
+      oldestSampleAt: "2026-08-18T17:00:00.000Z",
+      newestSampleAt: "2026-08-18T18:00:00.000Z",
+    },
+    series: [
+      {
+        key: "capacityMw",
+        circuitId: "0",
+        points: [
+          { timestamp: "2026-08-18T17:00:00.000Z", value: 100 },
+          { timestamp: "2026-08-18T18:00:00.000Z", value: 100 },
+        ],
+      },
+    ],
+    production: { state: "unavailable", reason: "source-not-collected" },
+  };
+  return value;
+}
+
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readonly url: string;
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
   closed = false;
   private listeners = new Map<string, Array<(event: MessageEvent) => void>>();
 
@@ -89,6 +120,10 @@ class FakeEventSource {
   emitRaw(type: string, data: string) {
     const event = new MessageEvent(type, { data });
     for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+
+  emitMessage(value: unknown) {
+    this.onmessage?.(new MessageEvent("message", { data: JSON.stringify(value) }));
   }
 
   fail() {
@@ -209,6 +244,44 @@ describe("PowerDashboard realtime recovery", () => {
     // Aggregate totals stay from the power event; details never clobber them.
     expect(screen.getByText("0.20 GW")).toBeInTheDocument();
     expect(screen.queryByText(/generator details unavailable/i)).not.toBeInTheDocument();
+  });
+
+  it("accepts a valid default message when an intermediary strips named-event metadata", async () => {
+    render(<PowerDashboard envelope={envelope()} dataMode="live" streamEnabled />);
+    const source = FakeEventSource.instances[0]!;
+
+    act(() => source.emitMessage(streamSnapshot(200)));
+
+    expect(await screen.findByText("0.20 GW")).toBeInTheDocument();
+    expect(source.closed).toBe(false);
+  });
+
+  it("refreshes retained history in place without navigating away from the selected view", async () => {
+    vi.useFakeTimers();
+    const refreshed = envelopeWithHistory();
+    refreshed.data.history!.series[0]!.points.push({
+      timestamp: "2026-08-18T18:01:00.000Z",
+      value: 101,
+    });
+    refreshed.data.history!.coverage.newestSampleAt = "2026-08-18T18:01:00.000Z";
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(refreshed), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    render(<PowerDashboard envelope={envelopeWithHistory()} dataMode="live" streamEnabled />);
+    expect(screen.getByText(/2 samples/i)).toBeInTheDocument();
+
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/power?serverId=main&range=1h&resolution=auto",
+      expect.objectContaining({ cache: "no-store" })
+    );
+    expect(screen.getByText(/3 samples/i)).toBeInTheDocument();
+    expect(screen.getByText(/6:01:00 PM UTC/)).toBeInTheDocument();
   });
 
   it("ignores malformed power-details events without failing or closing the healthy stream", async () => {

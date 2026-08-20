@@ -4,6 +4,7 @@ import {
   buildNoCircuitsState,
   canonicalCircuitId,
   effectiveResolution,
+  resolveHistoryRequest,
   headroomMw,
   parseBatterySeconds,
   sortPowerCircuits,
@@ -163,15 +164,54 @@ describe("power domain derivations", () => {
     expect(Object.keys(totals)).not.toContain("productionMw");
   });
 
-  it("coarsens requested resolution to the smallest allowlisted effective step", () => {
-    expect(effectiveResolution("1h", "auto")).toBe("1m");
-    expect(effectiveResolution("24h", "auto")).toBe("1m");
-    expect(effectiveResolution("7d", "auto")).toBe("15m");
+  it("uses source-fidelity Auto defaults while keeping manual resolutions independent", () => {
+    expect(effectiveResolution("15m", "auto")).toBe("15s");
+    expect(effectiveResolution("1h", "auto")).toBe("15s");
+    expect(effectiveResolution("6h", "auto")).toBe("30s");
+    expect(effectiveResolution("24h", "auto")).toBe("2m");
+    expect(effectiveResolution("7d", "auto")).toBe("10m");
     expect(effectiveResolution("15d", "auto")).toBe("15m");
-    expect(effectiveResolution("7d", "1m")).toBe("15m");
-    expect(effectiveResolution("15d", "5m")).toBe("15m");
-    expect(effectiveResolution("7d", "15m")).toBe("15m");
-    expect(effectiveResolution("15d", "1h")).toBe("1h");
     expect(effectiveResolution("1h", "15m")).toBe("15m");
+    expect(effectiveResolution("24h", "15s")).toBe("15s");
+  });
+
+  it("returns bounded request plans instead of fabricating long retention or huge responses", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    expect(resolveHistoryRequest({ range: "24h", resolution: "2m" }, now)).toMatchObject({
+      supported: true,
+      effectiveResolution: "2m",
+      expectedPointsPerSeries: 720,
+    });
+    expect(resolveHistoryRequest({ range: "24h", resolution: "15s" }, now)).toMatchObject({
+      supported: false,
+      reason: "resolution-too-fine",
+    });
+    expect(resolveHistoryRequest({ range: "1y", resolution: "auto" }, now)).toMatchObject({
+      supported: false,
+      reason: "retention-unavailable",
+    });
+    expect(resolveHistoryRequest({ range: "custom", resolution: "1m" }, now)).toMatchObject({
+      supported: false,
+      reason: "custom-range-required",
+    });
+    expect(resolveHistoryRequest({
+      range: "custom",
+      resolution: "15s",
+      startAt: "2026-08-18T17:00:00.000Z",
+      endAt: "2026-08-18T17:20:00.000Z",
+    }, now)).toMatchObject({
+      supported: true,
+      effectiveResolution: "15s",
+      expectedPointsPerSeries: 80,
+    });
+    expect(resolveHistoryRequest({
+      range: "custom",
+      resolution: "1m",
+      startAt: "2026-08-01T17:00:00.000Z",
+      endAt: "2026-08-18T17:20:00.000Z",
+    }, now)).toMatchObject({
+      supported: false,
+      reason: "retention-unavailable",
+    });
   });
 });

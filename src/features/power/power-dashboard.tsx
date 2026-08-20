@@ -25,14 +25,42 @@ export interface PowerDashboardProps {
   streamEnabled?: boolean;
   selectedRange?: PowerHistoryRange;
   selectedResolution?: PowerHistoryResolution;
+  selectedStartAt?: string;
+  selectedEndAt?: string;
 }
 
-const RANGES = ["1h", "6h", "24h", "7d", "15d"] as const;
-const RESOLUTIONS = ["auto", "1m", "5m", "15m", "1h"] as const;
+const RANGES = ["15m", "1h", "6h", "24h", "7d", "15d", "ytd", "1y", "lifetime", "custom"] as const;
+const RESOLUTIONS = ["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"] as const;
+const HISTORY_REFRESH_INTERVAL_MS: Record<PowerHistoryRange, number> = {
+  "15m": 15_000,
+  "1h": 15_000,
+  "6h": 30_000,
+  "24h": 60_000,
+  "7d": 120_000,
+  "15d": 300_000,
+  ytd: 300_000,
+  "1y": 300_000,
+  lifetime: 300_000,
+  custom: 15_000,
+};
 
 const formatGw = (mw: number) => `${(mw / 1000).toFixed(2)} GW`;
 const formatMw = (mw: number) => `${mw.toLocaleString("en-US", { maximumFractionDigits: 1 })} MW`;
 const formatPercent = (percent: number) => `${percent.toFixed(1)}%`;
+const rangeLabel = (range: PowerHistoryRange) => ({
+  "15m": "15m",
+  "1h": "1h",
+  "6h": "6h",
+  "24h": "24h",
+  "7d": "7d",
+  "15d": "15d",
+  ytd: "YTD",
+  "1y": "1y",
+  lifetime: "Lifetime",
+  custom: "Custom",
+}[range]);
+const resolutionLabel = (resolution: PowerHistoryResolution) => resolution === "auto" ? "Auto" : resolution;
+const formatDateInput = (value: string | undefined) => value?.replace(/Z$/, "").slice(0, 16) ?? "";
 const seriesLabel = (series: PowerHistorySeries) => ({
   capacityMw: "Capacity",
   consumptionMw: "Consumption",
@@ -79,6 +107,12 @@ function formatChartTime(timestamp: number): string {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+function formatObservedAt(timestamp: string | null): string {
+  return timestamp
+    ? `${new Date(timestamp).toLocaleString("en-US", { timeZone: "UTC" })} UTC`
+    : "unknown";
 }
 
 /**
@@ -178,8 +212,13 @@ export function PowerDashboard({
   streamEnabled,
   selectedRange,
   selectedResolution,
+  selectedStartAt,
+  selectedEndAt,
 }: PowerDashboardProps) {
   const [current, setCurrent] = useState(envelope.data.current);
+  const [history, setHistory] = useState(envelope.data.history);
+  const [currentFreshness, setCurrentFreshness] = useState(envelope.freshness.current);
+  const [historyFreshness, setHistoryFreshness] = useState(envelope.freshness.history);
   const [refreshStatus, setRefreshStatus] = useState(
     streamEnabled === true
       ? "Connecting realtime"
@@ -187,7 +226,6 @@ export function PowerDashboard({
         ? "Polling fallback"
         : "Server snapshot"
   );
-  const history = envelope.data.history;
   const requestedRange = selectedRange ?? history?.coverage.requestedRange ?? "1h";
   const requestedResolution = selectedResolution ?? "auto";
   const effectiveResolution = history?.coverage.effectiveResolution ?? "1m";
@@ -211,9 +249,46 @@ export function PowerDashboard({
     let source: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let historyTimer: ReturnType<typeof setInterval> | null = null;
     let failures = 0;
 
-    const pollingUrl = `/api/v1/power?serverId=${encodeURIComponent(envelope.serverId)}&range=${requestedRange}&resolution=${requestedResolution}`;
+    const pollingParams = new URLSearchParams({
+      serverId: envelope.serverId,
+      range: requestedRange,
+      resolution: requestedResolution,
+    });
+    if (selectedStartAt) pollingParams.set("startAt", selectedStartAt);
+    if (selectedEndAt) pollingParams.set("endAt", selectedEndAt);
+    const pollingUrl = `/api/v1/power?${pollingParams.toString()}`;
+
+    const applyRefreshedEnvelope = (refreshed: PowerEnvelope) => {
+      if (disposed) return;
+      setCurrent(refreshed.data.current);
+      setCurrentFreshness(refreshed.freshness.current);
+      setHistory(refreshed.data.history);
+      setHistoryFreshness(refreshed.freshness.history);
+    };
+
+    const refreshHistory = async () => {
+      try {
+        const response = await fetch(pollingUrl, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("power history refresh unavailable");
+        const refreshed = powerEnvelopeSchema.parse(await response.json());
+        if (refreshed.serverId !== envelope.serverId) {
+          throw new Error("power history refresh server mismatch");
+        }
+        if (!disposed) {
+          setHistory(refreshed.data.history);
+          setHistoryFreshness(refreshed.freshness.history);
+        }
+      } catch {
+        // Current realtime remains independent. The last retained result stays
+        // rendered and its source freshness remains visible to the operator.
+      }
+    };
 
     const poll = async () => {
       try {
@@ -226,8 +301,8 @@ export function PowerDashboard({
         if (refreshed.serverId !== envelope.serverId) {
           throw new Error("power refresh server mismatch");
         }
-        if (!disposed && refreshed.data.current) {
-          setCurrent(refreshed.data.current);
+        if (!disposed) {
+          applyRefreshedEnvelope(refreshed);
           setRefreshStatus("Polling fallback");
         }
       } catch {
@@ -238,6 +313,10 @@ export function PowerDashboard({
     const startPolling = () => {
       source?.close();
       source = null;
+      if (historyTimer !== null) {
+        clearInterval(historyTimer);
+        historyTimer = null;
+      }
       if (pollTimer !== null) return;
       void poll();
       pollTimer = setInterval(() => void poll(), 15_000);
@@ -271,71 +350,113 @@ export function PowerDashboard({
         reconnectTimer = setTimeout(connect, delayMs);
       };
       candidate.onerror = fail;
-      candidate.addEventListener("power", (event) => {
-        try {
-          const message = event as MessageEvent<string>;
-          const snapshot = powerStreamSnapshotSchema.parse(JSON.parse(message.data));
-          if (disposed || source !== candidate) return;
-          setCurrent((previous) => ({
-            topologyState: snapshot.topologyState,
-            totals: snapshot.totals,
-            circuits: snapshot.circuits,
-            generators: previous?.generators ?? { state: "unavailable", items: [] },
-            majorConsumers: previous?.majorConsumers ?? { state: "unavailable", items: [] },
-          }));
-          setRefreshStatus("Realtime live");
-        } catch {
-          fail();
+      const applyPowerSnapshot = (value: unknown, closeOnInvalid: boolean) => {
+        const parsed = powerStreamSnapshotSchema.safeParse(value);
+        if (!parsed.success) {
+          if (closeOnInvalid) fail();
+          return false;
         }
-      });
-      candidate.addEventListener("power-details", (event) => {
-        if (disposed || source !== candidate) return;
-        let details: ReturnType<typeof powerDetailsStreamSnapshotSchema.parse>;
-        try {
-          const message = event as MessageEvent<string>;
-          details = powerDetailsStreamSnapshotSchema.parse(JSON.parse(message.data));
-        } catch {
-          // Detail telemetry is optional and independently degraded. A
-          // malformed details event must never fail/close the healthy stream;
-          // ignore it and keep whatever details (if any) we already have.
-          return;
-        }
+        if (disposed || source !== candidate) return true;
+        const snapshot = parsed.data;
+        setCurrent((previous) => ({
+          topologyState: snapshot.topologyState,
+          totals: snapshot.totals,
+          circuits: snapshot.circuits,
+          generators: previous?.generators ?? { state: "unavailable", items: [] },
+          majorConsumers: previous?.majorConsumers ?? { state: "unavailable", items: [] },
+        }));
+        setCurrentFreshness({ state: "live", observedAt: snapshot.observedAt });
+        setRefreshStatus("Realtime live");
+        return true;
+      };
+
+      const applyDetailsSnapshot = (value: unknown) => {
+        if (disposed || source !== candidate) return false;
+        const parsed = powerDetailsStreamSnapshotSchema.safeParse(value);
+        if (!parsed.success) return false;
         setCurrent((previous) =>
           previous
             ? {
                 ...previous,
-                generators: details.generators,
-                majorConsumers: details.majorConsumers,
+                generators: parsed.data.generators,
+                majorConsumers: parsed.data.majorConsumers,
               }
             : previous
         );
         setRefreshStatus("Realtime live");
+        return true;
+      };
+
+      const parseEventData = (event: Event): unknown => {
+        try {
+          return JSON.parse((event as MessageEvent<string>).data);
+        } catch {
+          return undefined;
+        }
+      };
+
+      candidate.addEventListener("power", (event) => {
+        applyPowerSnapshot(parseEventData(event), true);
       });
+      candidate.addEventListener("power-details", (event) => {
+        // Detail telemetry is optional and independently degraded. A malformed
+        // details event must never fail/close the healthy stream.
+        applyDetailsSnapshot(parseEventData(event));
+      });
+      candidate.onmessage = (event) => {
+        // Some reverse proxies preserve the SSE data field but drop `event:`.
+        // Accept only the two public schemas so unrelated default messages are
+        // ignored and a valid frame cannot be mistaken for the other stream.
+        const value = parseEventData(event);
+        if (applyPowerSnapshot(value, false)) return;
+        applyDetailsSnapshot(value);
+      };
     };
 
-    if (streamEnabled) connect();
-    else startPolling();
+    if (streamEnabled) {
+      connect();
+      if (typeof EventSource !== "undefined") {
+        historyTimer = setInterval(
+          () => void refreshHistory(),
+          HISTORY_REFRESH_INTERVAL_MS[requestedRange]
+        );
+      }
+    } else startPolling();
 
     return () => {
       disposed = true;
       source?.close();
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
       if (pollTimer !== null) clearInterval(pollTimer);
+      if (historyTimer !== null) clearInterval(historyTimer);
     };
   }, [
     envelope.serverId,
     requestedRange,
     requestedResolution,
+    selectedStartAt,
+    selectedEndAt,
     streamEnabled,
   ]);
   const badge = dataMode === "mock" ? "Mock telemetry" :
-    envelope.freshness.current.state === "unavailable" || envelope.freshness.history.state === "unavailable" ? "Degraded telemetry" : "Live telemetry";
+    currentFreshness.state === "unavailable" || historyFreshness.state === "unavailable" ? "Degraded telemetry" : "Live telemetry";
 
-  const coverageMessage = history?.coverage.state === "partial"
-    ? `Partial retained coverage · ${effectiveResolution} buckets · oldest sample ${history.coverage.oldestSampleAt ? new Date(history.coverage.oldestSampleAt).toLocaleString("en-US", { timeZone: "UTC" }) : "unknown"} UTC`
-    : history?.coverage.state === "empty"
-      ? `No retained samples in this range · ${effectiveResolution} buckets`
-      : history ? `Complete retained coverage · ${effectiveResolution} buckets` : null;
+  const coverageMessage = history?.coverage.state === "unsupported"
+    ? history.coverage.reason === "retention-unavailable"
+      ? `Not available under the current ${history.coverage.retentionHorizonDays}-day retention horizon`
+      : history.coverage.reason === "resolution-too-fine"
+        ? `Resolution ${effectiveResolution} is too fine for this range; choose Auto or coarsen it`
+        : history.coverage.reason === "custom-range-required"
+          ? "Custom history requires both a start and end date"
+          : "Custom history dates are invalid or outside the retained window"
+    : history?.coverage.state === "partial"
+      ? `Partial retained coverage · ${effectiveResolution} buckets · oldest sample ${formatObservedAt(history.coverage.oldestSampleAt)}`
+      : history?.coverage.state === "empty"
+        ? `No retained samples in this range · ${effectiveResolution} buckets`
+        : history ? `Complete retained coverage · ${effectiveResolution} buckets` : null;
+  const latestSampleMessage = history?.coverage.newestSampleAt
+    ? ` · latest sample ${formatObservedAt(history.coverage.newestSampleAt)}`
+    : "";
 
   return (
     <div className="power-stack">
@@ -347,7 +468,8 @@ export function PowerDashboard({
         </div>
         <div className="page-header__meta">
           <span className={`status-badge ${dataMode === "mock" ? "status-badge--mock" : "status-badge--live"}`}>{badge}</span>
-          <small>Current {envelope.freshness.current.state} · History {envelope.freshness.history.state}</small>
+          <small>Current {currentFreshness.state} · History {historyFreshness.state}</small>
+          <small>Observed {formatObservedAt(currentFreshness.observedAt)} · retained update {formatObservedAt(historyFreshness.observedAt)}</small>
           <small role="status" aria-label="Power refresh status">{refreshStatus}</small>
         </div>
       </header>
@@ -383,12 +505,12 @@ export function PowerDashboard({
       <section className="panel power-history-panel">
         <div className="panel__heading power-history-heading">
           <div><p className="eyebrow">Retained telemetry</p><h2>Power history</h2></div>
-          {coverageMessage ? <span className="power-coverage">{coverageMessage}</span> : null}
+          {coverageMessage ? <span className="power-coverage">{coverageMessage}{latestSampleMessage}</span> : null}
         </div>
         <div className="power-controls" aria-label="Power history controls">
           <div className="power-range" aria-label="History range">
             {RANGES.map((range) => (
-              <a key={range} aria-current={requestedRange === range ? "page" : undefined} href={`?serverId=${encodeURIComponent(envelope.serverId)}&range=${range}&resolution=${requestedResolution}`}>{range}</a>
+              <a key={range} aria-current={requestedRange === range ? "page" : undefined} href={`?serverId=${encodeURIComponent(envelope.serverId)}&range=${range}&resolution=${requestedResolution}`}>{rangeLabel(range)}</a>
             ))}
           </div>
           <form method="get" className="power-resolution">
@@ -396,13 +518,21 @@ export function PowerDashboard({
             <input type="hidden" name="range" value={requestedRange} />
             <label htmlFor="power-resolution">Resolution</label>
             <select id="power-resolution" name="resolution" defaultValue={requestedResolution}>
-              {RESOLUTIONS.map((resolution) => <option key={resolution} value={resolution}>{resolution}</option>)}
+              {RESOLUTIONS.map((resolution) => <option key={resolution} value={resolution}>{resolutionLabel(resolution)}</option>)}
             </select>
+            {requestedRange === "custom" ? <>
+              <label htmlFor="power-history-start">Start</label>
+              <input id="power-history-start" type="datetime-local" name="startAt" defaultValue={formatDateInput(selectedStartAt)} required />
+              <label htmlFor="power-history-end">End</label>
+              <input id="power-history-end" type="datetime-local" name="endAt" defaultValue={formatDateInput(selectedEndAt)} required />
+            </> : null}
             <button type="submit">Apply</button>
           </form>
         </div>
         {!history ? (
           <div className="power-chart-empty"><h2>Power history unavailable</h2><p>Historical source unavailable. Current FRM data remains independent and visible above.</p></div>
+        ) : history.coverage.state === "unsupported" ? (
+          <div className="power-chart-empty"><h2>Requested history is not available</h2><p>{coverageMessage}</p><p>Choose Auto or a coarser resolution, or select a range within the current retention horizon.</p></div>
         ) : historyPointCount === 0 ? (
           <div className="power-chart-empty"><h2>No retained samples</h2><p>The history source answered successfully but has no samples for this range.</p></div>
         ) : (

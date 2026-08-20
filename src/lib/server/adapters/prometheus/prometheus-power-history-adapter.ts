@@ -1,5 +1,5 @@
 import {
-  effectiveResolution,
+  resolveHistoryRequest,
   type PowerEffectiveResolution,
   type PowerHistoryKey,
   type PowerHistoryPoint,
@@ -25,21 +25,6 @@ const QUERY_SPECS = [
   { metric: "power_max_consumed", key: "correctedMaximumConsumptionMw" },
 ] as const satisfies readonly { metric: string; key: PowerHistoryKey }[];
 
-const RANGE_SECONDS = {
-  "1h": 60 * 60,
-  "6h": 6 * 60 * 60,
-  "24h": 24 * 60 * 60,
-  "7d": 7 * 24 * 60 * 60,
-  "15d": 15 * 24 * 60 * 60,
-} as const;
-
-const STEP_SECONDS: Record<PowerEffectiveResolution, number> = {
-  "1m": 60,
-  "5m": 5 * 60,
-  "15m": 15 * 60,
-  "1h": 60 * 60,
-};
-
 export interface PrometheusPowerHistoryAdapterOptions {
   baseUrl: string;
   urlLabel: string;
@@ -52,6 +37,16 @@ export interface PrometheusPowerHistoryAdapterOptions {
 
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 5000;
+const STEP_MS: Record<PowerEffectiveResolution, number> = {
+  "15s": 15_000,
+  "30s": 30_000,
+  "1m": 60_000,
+  "2m": 120_000,
+  "5m": 300_000,
+  "10m": 600_000,
+  "15m": 900_000,
+  "1h": 3_600_000,
+};
 
 /** Fixed-query Prometheus range adapter; selectors are server-owned only. */
 export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
@@ -74,9 +69,25 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
   }
 
   async getHistory(request: PowerHistoryRequest): Promise<PowerHistoryResult> {
-    const effective = effectiveResolution(request.range, request.resolution);
-    const endSeconds = Math.floor(this.now().getTime() / 1000);
-    const startSeconds = endSeconds - RANGE_SECONDS[request.range];
+    const plan = resolveHistoryRequest(request, this.now());
+    if (!plan.supported) {
+      return {
+        observedAt: null,
+        coverage: {
+          state: "unsupported",
+          reason: plan.reason,
+          requestedRange: request.range,
+          effectiveResolution: plan.effectiveResolution,
+          retentionHorizonDays: 15,
+          oldestSampleAt: null,
+          newestSampleAt: null,
+        },
+        series: [],
+      };
+    }
+    const effective = plan.effectiveResolution;
+    const startSeconds = Math.floor(plan.startAt.getTime() / 1000);
+    const endSeconds = Math.floor(plan.endAt.getTime() / 1000);
 
     const responses = await Promise.all(
       QUERY_SPECS.map(async (spec) => ({
@@ -119,7 +130,7 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
       };
     }
 
-    const stepMs = STEP_SECONDS[effective] * 1000;
+    const stepMs = STEP_MS[effective];
     const complete =
       new Set(series.map((item) => item.key)).size === QUERY_SPECS.length &&
       series.every((item) => {

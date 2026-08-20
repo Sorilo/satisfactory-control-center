@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   powerEnvelopeSchema,
+  powerHistoryRequestSchema,
   type PowerEnvelope,
 } from "@/contracts/power-contracts";
 import {
-  POWER_HISTORY_RANGES,
-  POWER_HISTORY_RESOLUTIONS,
   type PowerHistoryRequest,
 } from "@/domain/power";
 import {
@@ -28,7 +27,7 @@ const HISTORY_LIMITER_OPTIONS = {
 let powerHistoryLimiter = new TokenBucketLimiter(HISTORY_LIMITER_OPTIONS);
 
 const NO_STORE = { "Cache-Control": "no-store" };
-const ALLOWED_QUERY_KEYS = new Set(["serverId", "range", "resolution"]);
+const ALLOWED_QUERY_KEYS = new Set(["serverId", "range", "resolution", "startAt", "endAt"]);
 
 type PowerLoader = (
   serverId: string,
@@ -68,21 +67,11 @@ function parseQuery(url: URL, defaultServerId: string): {
   const serverId = url.searchParams.get("serverId") ?? defaultServerId;
   const range = url.searchParams.get("range") ?? "1h";
   const resolution = url.searchParams.get("resolution") ?? "auto";
-  if (
-    !POWER_HISTORY_RANGES.includes(range as (typeof POWER_HISTORY_RANGES)[number]) ||
-    !POWER_HISTORY_RESOLUTIONS.includes(
-      resolution as (typeof POWER_HISTORY_RESOLUTIONS)[number]
-    )
-  ) {
-    return null;
-  }
-  return {
-    serverId,
-    history: {
-      range: range as PowerHistoryRequest["range"],
-      resolution: resolution as PowerHistoryRequest["resolution"],
-    },
-  };
+  const startAt = url.searchParams.get("startAt") ?? undefined;
+  const endAt = url.searchParams.get("endAt") ?? undefined;
+  const history = powerHistoryRequestSchema.safeParse({ range, resolution, startAt, endAt });
+  if (!history.success) return null;
+  return { serverId, history: history.data };
 }
 
 /** GET /api/v1/power with fixed, allowlisted history controls only. */
