@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PowerStreamSnapshot } from "@/contracts/power-contracts";
+import type {
+  PowerDetailsStreamSnapshot,
+  PowerStreamSnapshot,
+} from "@/contracts/power-contracts";
 import type { RuntimeConfig } from "@/lib/server/config/runtime-config";
 import {
   PowerStreamConnectionGate,
   handlePowerStreamRequest,
+  type PowerDetailsStreamAggregatorPort,
   type PowerStreamAggregatorPort,
 } from "./route";
 
@@ -30,6 +34,37 @@ function snapshot(observedAt = "2026-08-18T18:00:00.000Z"): PowerStreamSnapshot 
       associatedCircuitCount: 1,
       battery: null,
     }],
+  };
+}
+
+function detailsSnapshot(
+  observedAt = "2026-08-18T18:00:00.000Z"
+): PowerDetailsStreamSnapshot {
+  return {
+    observedAt,
+    generators: {
+      state: "live",
+      items: [{
+        name: "Coal Generator",
+        circuit: { state: "connected", id: "7" },
+        fuelType: "coal",
+        fuelInventory: { name: "Coal", amount: 50, capacity: 100 },
+        productionCapacityMw: 75,
+        loadPercent: 50,
+        canStart: true,
+        fuseTriggered: false,
+      }],
+    },
+    majorConsumers: {
+      state: "live",
+      items: [{
+        name: "Assembler Bank",
+        circuit: { state: "connected", id: "7" },
+        consumptionMw: 3,
+        maximumConsumptionMw: 5,
+        fuseTriggered: false,
+      }],
+    },
   };
 }
 
@@ -69,6 +104,27 @@ class FakeAggregator implements PowerStreamAggregatorPort {
   }
 
   emit(value: PowerStreamSnapshot, sequence: number) {
+    this.listener?.(value, sequence);
+  }
+}
+
+class FakeDetailAggregator implements PowerDetailsStreamAggregatorPort {
+  listener: ((value: PowerDetailsStreamSnapshot, sequence: number) => void) | null = null;
+  unsubscribe = vi.fn();
+  replay: { value: PowerDetailsStreamSnapshot; sequence: number } | null = null;
+  shouldThrow = false;
+
+  subscribeSequenced(
+    _serverId: string,
+    listener: (value: PowerDetailsStreamSnapshot, sequence: number) => void
+  ): () => void {
+    if (this.shouldThrow) throw new Error("private detail producer failure");
+    this.listener = listener;
+    if (this.replay) listener(this.replay.value, this.replay.sequence);
+    return this.unsubscribe;
+  }
+
+  emit(value: PowerDetailsStreamSnapshot, sequence: number) {
     this.listener?.(value, sequence);
   }
 }
@@ -187,7 +243,7 @@ describe("power SSE route", () => {
   });
 
   it("rejects malformed or cross-server Last-Event-ID values", async () => {
-    for (const lastEventId of ["garbage", "other:2", "main:0", "main:-1"]) {
+    for (const lastEventId of ["garbage", "other:2", "main:0", "main:-1", "main:details:0", "other:details:2"]) {
       const response = handlePowerStreamRequest(
         request(undefined, { headers: { "Last-Event-ID": lastEventId } }),
         { config: config(), aggregator: new FakeAggregator(), connectionGate: new PowerStreamConnectionGate() }
@@ -278,5 +334,132 @@ describe("power SSE route", () => {
     });
     expect(rejected.status).toBe(503);
     expect(await rejected.text()).not.toContain("secret");
+  });
+
+  it("emits power and power-details events with distinct ids and no private fields", async () => {
+    const aggregator = new FakeAggregator();
+    aggregator.replay = { value: snapshot(), sequence: 4 };
+    const detailAggregator = new FakeDetailAggregator();
+    detailAggregator.replay = { value: detailsSnapshot(), sequence: 2 };
+    const response = handlePowerStreamRequest(request(), {
+      config: config(),
+      aggregator,
+      detailAggregator,
+      connectionGate: new PowerStreamConnectionGate(),
+    });
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    const output = await readUntil(reader, /event: power-details/);
+    expect(output).toContain("retry: 5000");
+    expect(output).toContain("id: main:4");
+    expect(output).toContain("event: power");
+    expect(output).toContain("id: main:details:2");
+    expect(output).toContain("event: power-details");
+    expect(output).toContain('"name":"Coal Generator"');
+    expect(output).not.toMatch(
+      /ClassName|location|PowerProduction|BaseProd|RegulatedDemandProd|FuelResource|PowerInfo|session_name|url|DynamicProdCapacity/i
+    );
+  });
+
+  it("detaches the detail channel on an invalid detail event without failing the power stream", async () => {
+    const aggregator = new FakeAggregator();
+    const detailAggregator = new FakeDetailAggregator();
+    const response = handlePowerStreamRequest(request(), {
+      config: config(),
+      aggregator,
+      detailAggregator,
+      connectionGate: new PowerStreamConnectionGate(),
+    });
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    await readUntil(reader, /retry: 5000/);
+
+    detailAggregator.emit({ ...detailsSnapshot(), ClassName: "leak" } as never, 1);
+    expect(detailAggregator.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(aggregator.unsubscribe).toHaveBeenCalledTimes(0);
+
+    aggregator.emit(snapshot("2026-08-18T18:00:05.000Z"), 5);
+    const update = await readUntil(reader, /main:5/);
+    expect(update).toContain("event: power");
+    expect(update).not.toContain("leak");
+  });
+
+  it("detaches an oversized detail channel without failing the accepted power stream", async () => {
+    const aggregator = new FakeAggregator();
+    const detailAggregator = new FakeDetailAggregator();
+    detailAggregator.replay = { value: detailsSnapshot(), sequence: 1 };
+    const response = handlePowerStreamRequest(request(), {
+      config: config(),
+      aggregator,
+      detailAggregator,
+      connectionGate: new PowerStreamConnectionGate(),
+      maxEventBytes: 64,
+    });
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    await readUntil(reader, /retry: 5000/);
+    expect(detailAggregator.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(aggregator.unsubscribe).toHaveBeenCalledTimes(0);
+  });
+
+  it("accepts a details-form Last-Event-ID and suppresses only the matching detail replay", async () => {
+    const aggregator = new FakeAggregator();
+    aggregator.replay = { value: snapshot(), sequence: 3 };
+    const detailAggregator = new FakeDetailAggregator();
+    detailAggregator.replay = { value: detailsSnapshot(), sequence: 2 };
+    const response = handlePowerStreamRequest(
+      request(undefined, { headers: { "Last-Event-ID": "main:details:2" } }),
+      { config: config(), aggregator, detailAggregator, connectionGate: new PowerStreamConnectionGate() }
+    );
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    const output = await readUntil(reader, /event: power/);
+    expect(output).toContain("id: main:3");
+    expect(output).toContain("event: power");
+    expect(output).not.toContain("event: power-details");
+  });
+
+  it("accepts a power-form Last-Event-ID and suppresses only the matching power replay", async () => {
+    const aggregator = new FakeAggregator();
+    aggregator.replay = { value: snapshot(), sequence: 3 };
+    const detailAggregator = new FakeDetailAggregator();
+    detailAggregator.replay = { value: detailsSnapshot(), sequence: 2 };
+    const response = handlePowerStreamRequest(
+      request(undefined, { headers: { "Last-Event-ID": "main:3" } }),
+      { config: config(), aggregator, detailAggregator, connectionGate: new PowerStreamConnectionGate() }
+    );
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    const output = await readUntil(reader, /event: power-details/);
+    expect(output).not.toMatch(/event: power\n/);
+    expect(output).not.toContain("id: main:3");
+    expect(output).toContain("event: power-details");
+    expect(output).toContain("id: main:details:2");
+  });
+
+  it("unsubscribes both power and detail channels on request abort", async () => {
+    const aggregator = new FakeAggregator();
+    const detailAggregator = new FakeDetailAggregator();
+    const controller = new AbortController();
+    const response = handlePowerStreamRequest(
+      request(undefined, { signal: controller.signal }),
+      { config: config(), aggregator, detailAggregator, connectionGate: new PowerStreamConnectionGate() }
+    );
+    const reader = response.body!.getReader();
+    openStreams.push(reader);
+    await readUntil(reader, /retry: 5000/);
+
+    controller.abort();
+    await Promise.resolve();
+    expect(aggregator.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(detailAggregator.unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

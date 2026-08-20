@@ -7,6 +7,7 @@ import {
   parseBatterySeconds,
   sortPowerCircuits,
   utilizationPercent,
+  type PowerBattery,
   type PowerCircuit,
   type PowerCurrentState,
   type PowerDetailCircuit,
@@ -194,12 +195,23 @@ function normalizeCircuit(raw: RawPowerCircuit): PowerCircuit {
     utilizationPercent: utilizationPercent(consumptionMw, capacityMw),
     fuseTriggered: raw.FuseTriggered,
     associatedCircuitCount: raw.AssociatedCircuits.length,
-    battery: {
-      chargePercent: raw.BatteryPercent,
-      netFlowMw: raw.BatteryDifferential,
-      secondsToEmpty: parseBatterySeconds(raw.BatteryTimeEmpty),
-      secondsToFull: parseBatterySeconds(raw.BatteryTimeFull),
-    },
+    battery: normalizeBattery(raw),
+  };
+}
+
+/**
+ * FRM reports an all-zero battery sentinel (BatteryCapacity 0, zeroed
+ * input/output/differential/percent, "00:00:00" times) when a circuit has no
+ * battery installed. Surface that as an absent battery rather than a
+ * fabricated zeroed estimate.
+ */
+function normalizeBattery(raw: RawPowerCircuit): PowerBattery | null {
+  if (raw.BatteryCapacity === 0) return null;
+  return {
+    chargePercent: raw.BatteryPercent,
+    netFlowMw: raw.BatteryDifferential,
+    secondsToEmpty: parseBatterySeconds(raw.BatteryTimeEmpty),
+    secondsToFull: parseBatterySeconds(raw.BatteryTimeFull),
   };
 }
 

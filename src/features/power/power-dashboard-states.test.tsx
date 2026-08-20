@@ -253,3 +253,35 @@ describe("PowerDashboard state matrix", () => {
     expect(screen.queryByRole("img", { name: /power history trend/i })).not.toBeInTheDocument();
   });
 });
+
+/*
+ * UI acceptance: human-readable battery estimates from the existing domain
+ * fields. Durations floor to whole minutes; null estimates are omitted. No new
+ * public BatteryInput/BatteryOutput/BatteryCapacity field is introduced.
+ */
+describe("PowerDashboard battery estimates", () => {
+  it("renders a human-readable time-to-full estimate from the existing secondsToFull field", () => {
+    // envelope() already ships battery { secondsToEmpty: null, secondsToFull: 3600 }.
+    render(<PowerDashboard envelope={envelope()} dataMode="live" />);
+    const table = screen.getByRole("table", { name: /current power circuits/i });
+    const row = within(table).getByRole("row", { name: /^7 / });
+    expect(within(row).getByText(/1h 0m to full/i)).toBeInTheDocument();
+  });
+
+  it("renders a human-readable time-to-empty estimate from the existing secondsToEmpty field", () => {
+    const value = envelope();
+    value.data.current!.circuits[0] = {
+      ...value.data.current!.circuits[0]!,
+      battery: {
+        chargePercent: 40,
+        netFlowMw: -8,
+        secondsToEmpty: 3723, // 1h 2m 3s -> "1h 2m to empty"
+        secondsToFull: null,
+      },
+    };
+    render(<PowerDashboard envelope={value} dataMode="live" />);
+    const table = screen.getByRole("table", { name: /current power circuits/i });
+    const row = within(table).getByRole("row", { name: /^7 / });
+    expect(within(row).getByText(/1h 2m to empty/i)).toBeInTheDocument();
+  });
+});

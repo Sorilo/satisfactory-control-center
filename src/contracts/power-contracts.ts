@@ -88,7 +88,7 @@ const fuelInventorySchema = z
   })
   .strict();
 
-const generatorSchema = z
+export const powerGeneratorSchema = z
   .object({
     name: z.string().min(1).max(160),
     circuit: detailCircuitSchema,
@@ -108,7 +108,7 @@ const generatorSchema = z
   })
   .strict();
 
-const consumerSchema = z
+export const powerMajorConsumerSchema = z
   .object({
     name: z.string().min(1).max(160),
     circuit: detailCircuitSchema,
@@ -131,8 +131,8 @@ const currentSchema = z
     topologyState: z.enum(["available", "no-circuits"]),
     totals: totalsSchema,
     circuits: z.array(circuitSchema).max(100),
-    generators: detailState(generatorSchema, 100),
-    majorConsumers: detailState(consumerSchema, 10),
+    generators: detailState(powerGeneratorSchema, 100),
+    majorConsumers: detailState(powerMajorConsumerSchema, 10),
   })
   .strict();
 
@@ -208,7 +208,21 @@ export const powerStreamSnapshotSchema = z
   })
   .strict();
 
+/**
+ * Realtime details carries only the independently-degraded generator and
+ * major-consumer groups, with the same ISO-ish observedAt as the rest of the
+ * public contract. Generators are capped at 100 and major consumers at 10.
+ */
+export const powerDetailsStreamSnapshotSchema = z
+  .object({
+    observedAt: observedAtSchema,
+    generators: detailState(powerGeneratorSchema, 100),
+    majorConsumers: detailState(powerMajorConsumerSchema, 10),
+  })
+  .strict();
+
 export type PowerEnvelope = z.infer<typeof powerEnvelopeSchema>;
 export type PowerQuery = z.infer<typeof powerQuerySchema>;
 export type PowerHistoryRequestContract = z.infer<typeof powerHistoryRequestSchema>;
 export type PowerStreamSnapshot = z.infer<typeof powerStreamSnapshotSchema>;
+export type PowerDetailsStreamSnapshot = z.infer<typeof powerDetailsStreamSnapshotSchema>;

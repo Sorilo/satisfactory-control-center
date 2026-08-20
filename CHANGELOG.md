@@ -2,13 +2,34 @@
 
 All notable release changes are documented here.
 
+## [0.2.0-rc.2] - 2026-08-20
+
+### Added
+
+- Reusable interactive telemetry history chart with mouse, touch-drag, keyboard, crosshair, markers, bounded all-series tooltips, exact derived values, and large-history downsampling.
+- Slower shared `power-details` SSE channel for changed generator and major-consumer snapshots, with independent degradation and bounded per-channel coalescing.
+- Human-readable existing battery empty/full estimates and evidence-grounded no-battery normalization.
+
+### Changed
+
+- Current Power totals, fuse state, and circuits update in place from accepted SSE without reloading the page.
+- Realtime producer recovery now uses abortable bounded backoff; malformed detail messages do not disrupt the accepted current-Power stream.
+- `POWER_STREAM_ENABLED` remains disabled by default and requires direct-LAN validation before final promotion.
+
+### Boundaries
+
+- No final `v0.2.0`, Slice 3, PostgreSQL persistence, map/location contract, or unresolved FRM production fields.
+- Battery capacity and separate input/output remain omitted until nonzero live evidence verifies their units.
+
+See [`docs/releases/v0.2.0-rc.2.md`](docs/releases/v0.2.0-rc.2.md) for validation and rollback guidance.
+
 ## [0.2.0-rc.1] - 2026-08-18
 
 ### Added
 
 - Slice 2 Power page with normalized current totals/circuits and independently degradable fixed-query Prometheus history.
 - Strict bounded `/getGenerators` and `/getPowerUsage` adapters with explicit disconnected-circuit state, normalized fuel/inventory detail, deterministic major-consumer ranking, sanitized fixtures, and no raw IDs/classes/locations.
-- Shared cached current-Power composition for Overview and Power, plus opt-in bounded power-only SSE with HTTP polling fallback.
+- Shared cached current-Power composition for Overview and Power, plus opt-in bounded Power SSE with fast current and slower detail channels and HTTP polling fallback.
 - Desktop/mobile browser coverage, contract/security/deployment guidance, and container smoke assertions for detail availability and private-field exclusion.
 
 ### Release-candidate boundaries
