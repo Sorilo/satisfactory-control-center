@@ -1,5 +1,6 @@
 import {
   effectiveResolution,
+  resolveHistoryRequest,
   type PowerCurrentState,
   type PowerHistoryProvider,
   type PowerHistoryRequest,
@@ -83,6 +84,22 @@ export class MockPowerProvider implements PowerProvider {
 
 export class MockPowerHistoryProvider implements PowerHistoryProvider {
   async getHistory(request: PowerHistoryRequest): Promise<PowerHistoryResult> {
+    const plan = resolveHistoryRequest(request, new Date(OBSERVED_AT));
+    if (!plan.supported) {
+      return {
+        observedAt: null,
+        coverage: {
+          state: "unsupported",
+          reason: plan.reason,
+          requestedRange: request.range,
+          effectiveResolution: plan.effectiveResolution,
+          retentionHorizonDays: 15,
+          oldestSampleAt: null,
+          newestSampleAt: null,
+        },
+        series: [],
+      };
+    }
     const points = [
       { timestamp: "2026-08-18T17:00:00.000Z", value: 8_200 },
       { timestamp: OBSERVED_AT, value: 8_500 },

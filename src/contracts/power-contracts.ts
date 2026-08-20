@@ -5,24 +5,46 @@ const observedAtSchema = z.string().min(1);
 const circuitIdSchema = z.string().regex(/^(0|[1-9]\d*)$/);
 const opaqueServerIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 
-export const powerRangeSchema = z.enum(["1h", "6h", "24h", "7d", "15d"]);
-export const powerResolutionSchema = z.enum(["auto", "1m", "5m", "15m", "1h"]);
-export const powerEffectiveResolutionSchema = z.enum(["1m", "5m", "15m", "1h"]);
+export const powerRangeSchema = z.enum(["15m", "1h", "6h", "24h", "7d", "15d", "ytd", "1y", "lifetime", "custom"]);
+export const powerResolutionSchema = z.enum(["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
+export const powerEffectiveResolutionSchema = z.enum(["15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
+const customDateSchema = z.string().min(1).refine((value) => Number.isFinite(Date.parse(value)), "Invalid date");
 
-export const powerHistoryRequestSchema = z
+const powerHistoryRequestBaseSchema = z
   .object({
     range: powerRangeSchema,
     resolution: powerResolutionSchema,
+    startAt: customDateSchema.optional(),
+    endAt: customDateSchema.optional(),
   })
   .strict();
+
+export const powerHistoryRequestSchema = powerHistoryRequestBaseSchema.superRefine((value, context) => {
+  if (value.range === "custom" && (!value.startAt || !value.endAt)) {
+    context.addIssue({ code: "custom", message: "Custom ranges require startAt and endAt." });
+  }
+  if (value.range !== "custom" && (value.startAt || value.endAt)) {
+    context.addIssue({ code: "custom", message: "startAt and endAt are only valid for custom ranges." });
+  }
+});
 
 export const powerQuerySchema = z
   .object({
     serverId: opaqueServerIdSchema,
     range: powerRangeSchema,
     resolution: powerResolutionSchema,
+    startAt: customDateSchema.optional(),
+    endAt: customDateSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.range === "custom" && (!value.startAt || !value.endAt)) {
+      context.addIssue({ code: "custom", message: "Custom ranges require startAt and endAt." });
+    }
+    if (value.range !== "custom" && (value.startAt || value.endAt)) {
+      context.addIssue({ code: "custom", message: "startAt and endAt are only valid for custom ranges." });
+    }
+  });
 
 const freshnessSchema = z
   .object({
@@ -159,7 +181,8 @@ const historySchema = z
   .object({
     coverage: z
       .object({
-        state: z.enum(["complete", "partial", "empty"]),
+        state: z.enum(["complete", "partial", "empty", "unsupported"]),
+        reason: z.enum(["retention-unavailable", "resolution-too-fine", "custom-range-required", "invalid-custom-range"]).optional(),
         requestedRange: powerRangeSchema,
         effectiveResolution: powerEffectiveResolutionSchema,
         retentionHorizonDays: z.literal(15),

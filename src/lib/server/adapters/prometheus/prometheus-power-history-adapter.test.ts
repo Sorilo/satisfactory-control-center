@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   POWER_HISTORY_RANGES,
   POWER_HISTORY_RESOLUTIONS,
-  effectiveResolution,
+  resolveHistoryRequest,
   type PowerHistoryKey,
 } from "@/domain/power";
 import { PrometheusPowerHistoryAdapter } from "./prometheus-power-history-adapter";
@@ -12,14 +12,6 @@ const METRIC_TO_KEY: Record<string, PowerHistoryKey> = {
   power_consumed: "consumptionMw",
   power_max_consumed: "correctedMaximumConsumptionMw",
 };
-
-const RANGE_SECONDS = {
-  "1h": 3600,
-  "6h": 21600,
-  "24h": 86400,
-  "7d": 604800,
-  "15d": 1296000,
-} as const;
 
 function matrix(
   metricName: string,
@@ -67,7 +59,8 @@ function adapter(fetcher: typeof fetch, now = "2026-08-18T18:00:00.000Z") {
 }
 
 describe("Prometheus power history adapter", () => {
-  it("uses fixed templates and enforces every range/resolution cell", async () => {
+  it("uses fixed templates for supported cells and short-circuits unsafe cells", async () => {
+    const now = "2026-08-18T18:00:00.000Z";
     for (const range of POWER_HISTORY_RANGES) {
       for (const resolution of POWER_HISTORY_RESOLUTIONS) {
         const calls: URL[] = [];
@@ -79,16 +72,20 @@ describe("Prometheus power history adapter", () => {
           if (!metric) throw new Error("unexpected query");
           return response(matrix(metric, []));
         });
-        await adapter(fetcher as typeof fetch).getHistory({ range, resolution });
+        const request = { range, resolution } as const;
+        const plan = resolveHistoryRequest(request, new Date(now));
+        const result = await adapter(fetcher as typeof fetch, now).getHistory(request);
+        if (!plan.supported) {
+          expect(calls, `${range}/${resolution}`).toHaveLength(0);
+          expect(result.coverage).toMatchObject({ state: "unsupported", requestedRange: range, effectiveResolution: plan.effectiveResolution });
+          continue;
+        }
         expect(calls).toHaveLength(3);
-        const effective = effectiveResolution(range, resolution);
-        expect(new Set(calls.map((url) => url.searchParams.get("step")))).toEqual(new Set([effective]));
+        expect(new Set(calls.map((url) => url.searchParams.get("step")))).toEqual(new Set([plan.effectiveResolution]));
         expect(new Set(calls.map((url) => url.pathname))).toEqual(new Set(["/api/v1/query_range"]));
         for (const url of calls) {
-          expect(url.searchParams.get("end")).toBe("1787076000");
-          expect(url.searchParams.get("start")).toBe(
-            String(1787076000 - RANGE_SECONDS[range])
-          );
+          expect(url.searchParams.get("end")).toBe(String(Math.floor(plan.endAt.getTime() / 1000)));
+          expect(url.searchParams.get("start")).toBe(String(Math.floor(plan.startAt.getTime() / 1000)));
           expect(url.searchParams.get("query")).toMatch(
             /^power_(capacity|consumed|max_consumed)\{url="http:\/\/frm\/with\\"quote",session_name="Main\\\\World"\}$/
           );
@@ -110,7 +107,7 @@ describe("Prometheus power history adapter", () => {
       coverage: {
         state: "complete",
         requestedRange: "1h",
-        effectiveResolution: "1m",
+        effectiveResolution: "15s",
         retentionHorizonDays: 15,
         oldestSampleAt: "2026-08-18T17:00:00.000Z",
         newestSampleAt: "2026-08-18T18:00:00.000Z",

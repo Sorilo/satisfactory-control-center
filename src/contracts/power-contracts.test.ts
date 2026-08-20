@@ -353,17 +353,17 @@ describe("power v1 contracts", () => {
   });
 
   it("allowlists the exact history range and resolution enums", () => {
-    for (const range of ["1h", "6h", "24h", "7d", "15d"]) {
+    for (const range of ["15m", "1h", "6h", "24h", "7d", "15d", "ytd", "1y", "lifetime", "custom"]) {
       expect(powerRangeSchema.parse(range)).toBe(range);
     }
     expect(() => powerRangeSchema.parse("30d")).toThrow();
 
-    for (const resolution of ["auto", "1m", "5m", "15m", "1h"]) {
+    for (const resolution of ["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
       expect(powerResolutionSchema.parse(resolution)).toBe(resolution);
     }
-    expect(() => powerResolutionSchema.parse("2m")).toThrow();
+    expect(() => powerResolutionSchema.parse("3m")).toThrow();
 
-    for (const effective of ["1m", "5m", "15m", "1h"]) {
+    for (const effective of ["15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
       expect(powerEffectiveResolutionSchema.parse(effective)).toBe(effective);
     }
   });

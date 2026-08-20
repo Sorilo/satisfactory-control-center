@@ -110,7 +110,7 @@ export async function getCachedPowerEnvelope(
   const historyRead = historyProvider
     ? readCached(
         historyCache,
-        `${serverId}:${request.range}:${request.resolution}`,
+        `${serverId}:${request.range}:${request.resolution}:${request.startAt ?? ""}:${request.endAt ?? ""}`,
         nowMs,
         HISTORY_CACHE_TTL_MS,
         () => historyProvider.getHistory(request)

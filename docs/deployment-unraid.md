@@ -1,18 +1,18 @@
-# Deploy v0.2.0-rc.2 on Unraid
+# Deploy v0.2.0-rc.3 on Unraid
 
 ## Slice 2 release-candidate boundary
 
-`v0.2.0-rc.2` is the current Slice 2 release candidate. It retains the RC.1 Power contracts and adds the interactive history inspector, in-place current telemetry, and a slower changed-detail SSE channel. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. It still does **not** include PostgreSQL history, persistence, the full map/location contract, or later data-rich views. Those remain in [`requirements-matrix.md`](requirements-matrix.md).
+`v0.2.0-rc.3` is the current Slice 2 release candidate. It retains the RC.2 runtime boundary and adds the verified browser EventSource-to-DOM correction, bounded retained-history refresh, independent range/resolution controls, custom-range validation, and explicit retention/resolution unsupported states. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. It still does **not** include PostgreSQL history, persistence, the full map/location contract, viewport zoom, or a 15m/1s live trace. Those remain outside this RC in [`requirements-matrix.md`](requirements-matrix.md).
 
 Published images after the tag release gate succeeds:
 
 - `ghcr.io/sorilo/satisfactory-control-center:latest` — current default branch.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2` — current Slice 2 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.3` — current Slice 2 release candidate.
 - `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision and preferred RC validation pin.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1` — prior Slice 2 rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — prior Slice 1 rollback release.
 
-Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.2` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
+Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.3` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
 
 ## Authenticate and pull
 
@@ -20,8 +20,8 @@ The repository/package is private by default. Create a GitHub token with only `r
 
 ```bash
 echo "$GHCR_READ_TOKEN" | docker login ghcr.io --username Sorilo --password-stdin
-docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2
-docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2 \
+docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.3
+docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.3 \
   --format '{{.Config.User}} {{json .Config.Healthcheck.Test}}'
 ```
 
@@ -46,7 +46,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 
 | Variable | Required/default | Purpose |
 |---|---|---|
-| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
+| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.3` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
 | `CONTROL_CENTER_BIND` | `127.0.0.1` | Host bind address. Change only when the LAN/reverse-proxy design requires it. |
 | `CONTROL_CENTER_PORT` | `3000` | Host-side application port. |
 | `GAME_NETWORK` | `sorilonet` placeholder | Existing external network shared with Satisfactory/FRM; inspect and replace if different. |
@@ -143,6 +143,6 @@ Never paste environment dumps, tokens, or raw credentials into support channels.
 
 ## Rollback
 
-Keep the previous known-good image tag and external environment file. To roll back RC.2, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1`, set `POWER_STREAM_ENABLED=false`, and recreate only this service. Slice 2 owns no database migration or persistent application volume.
+Keep the previous known-good image tag and external environment file. To roll back RC.3, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2`, set `POWER_STREAM_ENABLED=false`, and recreate only Control Center. Slice 2 owns no database migration or persistent application volume.
 
 For a current-only rollback, remove `PROMETHEUS_SERVERS_JSON` (and any site-specific monitoring-network override) while retaining the unchanged FRM `SERVERS_JSON`. No data migration or application volume is involved.

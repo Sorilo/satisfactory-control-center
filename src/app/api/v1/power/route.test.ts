@@ -46,7 +46,7 @@ describe("GET /api/v1/power", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
     expect(body.serverId).toBe("main");
-    expect(body.data.history.coverage).toMatchObject({ requestedRange: "1h", effectiveResolution: "1m" });
+    expect(body.data.history.coverage).toMatchObject({ requestedRange: "1h", effectiveResolution: "15s" });
     expect(body.data.current.generators).toMatchObject({
       state: "live",
       items: [{
@@ -80,7 +80,7 @@ describe("GET /api/v1/power", () => {
       "serverId=main&query=up",
       "serverId=main&range=1h&range=6h",
       "serverId=main&range=30d",
-      "serverId=main&resolution=30s",
+      "serverId=main&resolution=3m",
     ]) {
       resetPowerRouteLimiterForTests();
       const response = await GET(new Request(`http://app/api/v1/power?${query}`));

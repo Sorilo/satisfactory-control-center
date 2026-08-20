@@ -1,4 +1,7 @@
 import {
+  powerHistoryRequestSchema,
+} from "@/contracts/power-contracts";
+import {
   POWER_HISTORY_RANGES,
   POWER_HISTORY_RESOLUTIONS,
   type PowerHistoryRequest,
@@ -28,21 +31,24 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
       }
 
       const rangeRaw = typeof query.range === "string" ? query.range : "1h";
-      const resolutionRaw =
-        typeof query.resolution === "string" ? query.resolution : "auto";
-      const historyRequest: PowerHistoryRequest = {
-        range: POWER_HISTORY_RANGES.includes(
-          rangeRaw as PowerHistoryRequest["range"]
-        )
-          ? (rangeRaw as PowerHistoryRequest["range"])
-          : "1h",
-        resolution: POWER_HISTORY_RESOLUTIONS.includes(
-          resolutionRaw as PowerHistoryRequest["resolution"]
-        )
-          ? (resolutionRaw as PowerHistoryRequest["resolution"])
-          : "auto",
-      };
-
+      const resolutionRaw = typeof query.resolution === "string" ? query.resolution : "auto";
+      const range = POWER_HISTORY_RANGES.includes(rangeRaw as PowerHistoryRequest["range"])
+        ? (rangeRaw as PowerHistoryRequest["range"])
+        : "1h";
+      const resolution = POWER_HISTORY_RESOLUTIONS.includes(resolutionRaw as PowerHistoryRequest["resolution"])
+        ? (resolutionRaw as PowerHistoryRequest["resolution"])
+        : "auto";
+      const parsedRequest = powerHistoryRequestSchema.safeParse({
+        range,
+        resolution,
+        startAt: typeof query.startAt === "string" ? query.startAt : undefined,
+        endAt: typeof query.endAt === "string" ? query.endAt : undefined,
+      });
+      const historyRequest: PowerHistoryRequest = parsedRequest.success
+        ? parsedRequest.data
+        : range === "custom"
+          ? { range, resolution, startAt: typeof query.startAt === "string" ? query.startAt : undefined, endAt: typeof query.endAt === "string" ? query.endAt : undefined }
+          : { range: "1h", resolution: "auto" };
       const providers = createPowerProviders(config, server);
       const envelope = await getCachedPowerEnvelope(
         server.id,
@@ -78,6 +84,8 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
       streamEnabled={loaded.powerStreamEnabled}
       selectedRange={loaded.historyRequest.range}
       selectedResolution={loaded.historyRequest.resolution}
+      selectedStartAt={loaded.historyRequest.startAt}
+      selectedEndAt={loaded.historyRequest.endAt}
     />
   );
 }

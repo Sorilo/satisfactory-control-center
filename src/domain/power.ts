@@ -73,19 +73,43 @@ export interface PowerMajorConsumer {
   fuseTriggered: boolean;
 }
 
-export const POWER_HISTORY_RANGES = ["1h", "6h", "24h", "7d", "15d"] as const;
+export const POWER_HISTORY_RANGES = [
+  "15m",
+  "1h",
+  "6h",
+  "24h",
+  "7d",
+  "15d",
+  "ytd",
+  "1y",
+  "lifetime",
+  "custom",
+] as const;
 export type PowerHistoryRange = (typeof POWER_HISTORY_RANGES)[number];
 
 export const POWER_HISTORY_RESOLUTIONS = [
   "auto",
+  "15s",
+  "30s",
   "1m",
+  "2m",
   "5m",
+  "10m",
   "15m",
   "1h",
 ] as const;
 export type PowerHistoryResolution = (typeof POWER_HISTORY_RESOLUTIONS)[number];
 
-export const POWER_EFFECTIVE_RESOLUTIONS = ["1m", "5m", "15m", "1h"] as const;
+export const POWER_EFFECTIVE_RESOLUTIONS = [
+  "15s",
+  "30s",
+  "1m",
+  "2m",
+  "5m",
+  "10m",
+  "15m",
+  "1h",
+] as const;
 export type PowerEffectiveResolution = (typeof POWER_EFFECTIVE_RESOLUTIONS)[number];
 
 export const POWER_HISTORY_KEYS = [
@@ -107,7 +131,8 @@ export interface PowerHistorySeries {
 }
 
 export interface PowerHistoryCoverage {
-  state: "complete" | "partial" | "empty";
+  state: "complete" | "partial" | "empty" | "unsupported";
+  reason?: "retention-unavailable" | "resolution-too-fine" | "custom-range-required" | "invalid-custom-range";
   requestedRange: PowerHistoryRange;
   effectiveResolution: PowerEffectiveResolution;
   retentionHorizonDays: 15;
@@ -124,6 +149,8 @@ export interface PowerHistoryResult {
 export interface PowerHistoryRequest {
   range: PowerHistoryRange;
   resolution: PowerHistoryResolution;
+  startAt?: string;
+  endAt?: string;
 }
 
 export interface PowerProvider {
@@ -217,34 +244,113 @@ export function parseBatterySeconds(raw: string | null | undefined): number | nu
   return h * 3600 + m * 60 + s;
 }
 
-const STEP_RANK: Record<PowerEffectiveResolution, number> = {
-  "1m": 0,
-  "5m": 1,
-  "15m": 2,
-  "1h": 3,
+const STEP_SECONDS: Record<PowerEffectiveResolution, number> = {
+  "15s": 15,
+  "30s": 30,
+  "1m": 60,
+  "2m": 2 * 60,
+  "5m": 5 * 60,
+  "10m": 10 * 60,
+  "15m": 15 * 60,
+  "1h": 60 * 60,
 };
 
-const ALLOWED_STEPS: Record<
-  PowerHistoryRange,
-  readonly PowerEffectiveResolution[]
-> = {
-  "1h": ["1m", "5m", "15m", "1h"],
-  "6h": ["1m", "5m", "15m", "1h"],
-  "24h": ["1m", "5m", "15m", "1h"],
-  "7d": ["15m", "1h"],
-  "15d": ["15m", "1h"],
+const AUTO_RESOLUTION: Record<PowerHistoryRange, PowerEffectiveResolution> = {
+  "15m": "15s",
+  "1h": "15s",
+  "6h": "30s",
+  "24h": "2m",
+  "7d": "10m",
+  "15d": "15m",
+  ytd: "1h",
+  "1y": "1h",
+  lifetime: "1h",
+  custom: "1m",
 };
 
-/** Resolve a requested minimum bucket to a bounded effective step. */
+const FIXED_RANGE_SECONDS: Partial<Record<PowerHistoryRange, number>> = {
+  "15m": 15 * 60,
+  "1h": 60 * 60,
+  "6h": 6 * 60 * 60,
+  "24h": 24 * 60 * 60,
+  "7d": 7 * 24 * 60 * 60,
+  "15d": 15 * 24 * 60 * 60,
+};
+
+export const POWER_RETENTION_HORIZON_DAYS = 15;
+export const POWER_MAX_POINTS_PER_SERIES = 2_000;
+
+/** Resolve Auto only; manual resolutions remain independent and explicit. */
 export function effectiveResolution(
   range: PowerHistoryRange,
   requested: PowerHistoryResolution
 ): PowerEffectiveResolution {
-  const allowed = ALLOWED_STEPS[range];
-  if (requested === "auto") return allowed[0] as PowerEffectiveResolution;
-  const requestedRank = STEP_RANK[requested];
-  return (
-    allowed.find((step) => STEP_RANK[step] >= requestedRank) ??
-    (allowed[allowed.length - 1] as PowerEffectiveResolution)
-  );
+  return requested === "auto" ? AUTO_RESOLUTION[range] : requested;
+}
+
+export type PowerHistoryPlanReason =
+  | "retention-unavailable"
+  | "resolution-too-fine"
+  | "custom-range-required"
+  | "invalid-custom-range";
+
+export type PowerHistoryRequestPlan =
+  | {
+      supported: true;
+      effectiveResolution: PowerEffectiveResolution;
+      startAt: Date;
+      endAt: Date;
+      expectedPointsPerSeries: number;
+    }
+  | {
+      supported: false;
+      effectiveResolution: PowerEffectiveResolution;
+      expectedPointsPerSeries: number | null;
+      reason: PowerHistoryPlanReason;
+    };
+
+/**
+ * Apply the current 15-day retention and 2,000-point-per-series bounds before
+ * any upstream query is constructed. Long-range identifiers stay in the
+ * contract, but are explicitly unsupported until longer retention exists.
+ */
+export function resolveHistoryRequest(
+  request: PowerHistoryRequest,
+  now = new Date()
+): PowerHistoryRequestPlan {
+  const effective = effectiveResolution(request.range, request.resolution);
+  let startAt: Date;
+  let endAt: Date;
+
+  if (request.range === "custom") {
+    if (!request.startAt || !request.endAt) {
+      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "custom-range-required" };
+    }
+    startAt = new Date(request.startAt);
+    endAt = new Date(request.endAt);
+    if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || startAt >= endAt) {
+      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "invalid-custom-range" };
+    }
+  } else {
+    const seconds = FIXED_RANGE_SECONDS[request.range];
+    if (seconds === undefined) {
+      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "retention-unavailable" };
+    }
+    endAt = new Date(now);
+    startAt = new Date(endAt.getTime() - seconds * 1000);
+  }
+
+  const nowMs = now.getTime();
+  const retentionStartMs = nowMs - POWER_RETENTION_HORIZON_DAYS * 24 * 60 * 60 * 1000;
+  if (startAt.getTime() < retentionStartMs || endAt.getTime() > nowMs) {
+    return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "retention-unavailable" };
+  }
+
+  const durationSeconds = (endAt.getTime() - startAt.getTime()) / 1000;
+  const expectedPointsPerSeries = Math.ceil(durationSeconds / STEP_SECONDS[effective]);
+  if (expectedPointsPerSeries > POWER_MAX_POINTS_PER_SERIES) {
+    return { supported: false, effectiveResolution: effective, expectedPointsPerSeries, reason: "resolution-too-fine" };
+  }
+
+  return { supported: true, effectiveResolution: effective, startAt, endAt, expectedPointsPerSeries };
 }
