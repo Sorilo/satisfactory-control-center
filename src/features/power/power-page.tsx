@@ -60,6 +60,7 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
         envelope,
         dataMode: config.dataMode,
         powerStreamEnabled: config.powerStreamEnabled,
+        sourceIntervalSeconds: config.prometheusScrapeIntervalSeconds,
         historyRequest,
       };
     } catch {
@@ -86,6 +87,7 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
       selectedResolution={loaded.historyRequest.resolution}
       selectedStartAt={loaded.historyRequest.startAt}
       selectedEndAt={loaded.historyRequest.endAt}
-    />
+      sourceIntervalSeconds={loaded.sourceIntervalSeconds}
+      />
   );
 }

@@ -233,7 +233,7 @@ describe("FRM power adapter", () => {
     expect(generators[99]?.name).toBe("Generator 099");
   });
 
-  it("ranks meaningful consumers first, retains connected zero draw, and omits disconnected zero-only structures", async () => {
+  it("ranks positive-draw consumers first and omits all zero-zero structures", async () => {
     const adapter = new FrmPowerAdapter({
       baseUrl: "http://frm:8080",
       fetcher: async (input) => {
@@ -252,15 +252,21 @@ describe("FRM power adapter", () => {
         maximumConsumptionMw: 5,
         fuseTriggered: false,
       },
-      {
-        name: "Biomass Burner",
-        circuit: { state: "connected", id: "0" },
-        consumptionMw: 0,
-        maximumConsumptionMw: 0,
-        fuseTriggered: false,
-      },
     ]);
     expect(JSON.stringify(consumers)).not.toMatch(/fixture-|Build_|location|ClassName/i);
+  });
+
+  it("returns a live empty detail list when every record has zero current and maximum demand", async () => {
+    const records = [
+      { ...powerUsageFixture[4], ID: "fixture-connected-zero", Name: "Connected zero", PowerInfo: { ...powerUsageFixture[4]!.PowerInfo, PowerConsumed: 0, MaxPowerConsumed: 0 } },
+      { ...powerUsageFixture[4], ID: "fixture-disconnected-zero", Name: "Disconnected zero", PowerInfo: { ...powerUsageFixture[4]!.PowerInfo, CircuitGroupID: -1, PowerConsumed: 0, MaxPowerConsumed: 0 } },
+    ];
+    const adapter = new FrmPowerAdapter({
+      baseUrl: "http://frm:8080",
+      fetcher: async () => jsonResponse(records),
+    });
+
+    await expect(adapter.getMajorConsumers()).resolves.toEqual([]);
   });
 
   it("uses environment-independent code-point ordering for equivalent consumer rankings", async () => {

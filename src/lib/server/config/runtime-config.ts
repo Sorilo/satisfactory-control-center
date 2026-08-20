@@ -30,6 +30,7 @@ export interface RuntimeConfig {
   prometheusServers: PrometheusServerConfig[];
   trustProxyHeaders: boolean;
   powerStreamEnabled: boolean;
+  prometheusScrapeIntervalSeconds: number;
 }
 
 export type RuntimeEnv = Record<string, string | undefined>;
@@ -72,6 +73,18 @@ function assertSafeHttpUrl(raw: string, source = "FRM"): void {
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
     throw new ConfigError(`${source} URL must be a valid HTTP(S) URL without embedded credentials`);
   }
+}
+
+function parsePrometheusScrapeInterval(raw: string | undefined): number {
+  const value = (raw ?? "15").trim();
+  if (!/^\d+$/.test(value)) {
+    throw new ConfigError("PROMETHEUS_SCRAPE_INTERVAL_SECONDS must be 5 or 15");
+  }
+  const seconds = Number(value);
+  if (seconds !== 5 && seconds !== 15) {
+    throw new ConfigError("PROMETHEUS_SCRAPE_INTERVAL_SECONDS must be 5 or 15");
+  }
+  return seconds;
 }
 
 function parsePrometheusServersJson(raw: string | undefined): PrometheusServerConfig[] {
@@ -207,6 +220,9 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
     prometheusServers: parsePrometheusServersJson(env.PROMETHEUS_SERVERS_JSON),
     trustProxyHeaders: trustProxyHeadersRaw === "true",
     powerStreamEnabled: powerStreamEnabledRaw === "true",
+    prometheusScrapeIntervalSeconds: parsePrometheusScrapeInterval(
+      env.PROMETHEUS_SCRAPE_INTERVAL_SECONDS
+    ),
   });
 }
 

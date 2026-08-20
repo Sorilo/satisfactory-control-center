@@ -48,13 +48,18 @@ function response(value: unknown) {
   });
 }
 
-function adapter(fetcher: typeof fetch, now = "2026-08-18T18:00:00.000Z") {
+function adapter(
+  fetcher: typeof fetch,
+  now = "2026-08-18T18:00:00.000Z",
+  sourceIntervalSeconds = 15
+) {
   return new PrometheusPowerHistoryAdapter({
     baseUrl: "http://prometheus:9090/",
     urlLabel: 'http://frm/with"quote',
     sessionLabel: "Main\\World",
     fetcher,
     now: () => new Date(now),
+    sourceIntervalSeconds,
   });
 }
 
@@ -93,6 +98,25 @@ describe("Prometheus power history adapter", () => {
       }
     }
   });
+
+  it("queries five-second history only when the configured source cadence supports it", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const query = new URL(String(input)).searchParams.get("query") ?? "";
+      const metric = Object.keys(METRIC_TO_KEY).find((name) => query.startsWith(`${name}{`))!;
+      return response(matrix(metric, []));
+    });
+
+    const result = await adapter(fetcher as typeof fetch, undefined, 5).getHistory({
+      range: "15m",
+      resolution: "5s",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(result.coverage).toMatchObject({ state: "empty", effectiveResolution: "5s" });
+    expect(new Set(fetcher.mock.calls.map(([input]) => new URL(String(input)).searchParams.get("step")))).toEqual(
+      new Set(["5s"])
+    );
+  });
+
 
   it("normalizes exact matrix labels, numeric strings, ordering, and coverage", async () => {
     const fetcher = vi.fn(async (input: string | URL | Request) => {

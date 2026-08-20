@@ -27,10 +27,11 @@ export interface PowerDashboardProps {
   selectedResolution?: PowerHistoryResolution;
   selectedStartAt?: string;
   selectedEndAt?: string;
+  sourceIntervalSeconds?: number;
 }
 
 const RANGES = ["15m", "1h", "6h", "24h", "7d", "15d", "ytd", "1y", "lifetime", "custom"] as const;
-const RESOLUTIONS = ["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"] as const;
+const RESOLUTIONS = ["auto", "5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"] as const;
 const HISTORY_REFRESH_INTERVAL_MS: Record<PowerHistoryRange, number> = {
   "15m": 15_000,
   "1h": 15_000,
@@ -214,6 +215,7 @@ export function PowerDashboard({
   selectedResolution,
   selectedStartAt,
   selectedEndAt,
+  sourceIntervalSeconds,
 }: PowerDashboardProps) {
   const [current, setCurrent] = useState(envelope.data.current);
   const [history, setHistory] = useState(envelope.data.history);
@@ -228,6 +230,10 @@ export function PowerDashboard({
   );
   const requestedRange = selectedRange ?? history?.coverage.requestedRange ?? "1h";
   const requestedResolution = selectedResolution ?? "auto";
+  const historyRefreshIntervalMs = sourceIntervalSeconds === 5 &&
+    (requestedRange === "15m" || requestedRange === "1h" || requestedRange === "custom")
+    ? 5_000
+    : HISTORY_REFRESH_INTERVAL_MS[requestedRange];
   const effectiveResolution = history?.coverage.effectiveResolution ?? "1m";
   // Both derivations depend only on the retained history series, so memoize
   // them on that reference: live current updates re-render the dashboard but
@@ -418,7 +424,7 @@ export function PowerDashboard({
       if (typeof EventSource !== "undefined") {
         historyTimer = setInterval(
           () => void refreshHistory(),
-          HISTORY_REFRESH_INTERVAL_MS[requestedRange]
+          historyRefreshIntervalMs
         );
       }
     } else startPolling();
@@ -437,6 +443,7 @@ export function PowerDashboard({
     selectedStartAt,
     selectedEndAt,
     streamEnabled,
+    historyRefreshIntervalMs,
   ]);
   const badge = dataMode === "mock" ? "Mock telemetry" :
     currentFreshness.state === "unavailable" || historyFreshness.state === "unavailable" ? "Degraded telemetry" : "Live telemetry";
@@ -444,18 +451,20 @@ export function PowerDashboard({
   const coverageMessage = history?.coverage.state === "unsupported"
     ? history.coverage.reason === "retention-unavailable"
       ? `Not available under the current ${history.coverage.retentionHorizonDays}-day retention horizon`
-      : history.coverage.reason === "resolution-too-fine"
+      : history.coverage.reason === "source-fidelity-too-fine"
+        ? `Resolution ${effectiveResolution} is finer than the configured history source cadence`
+        : history.coverage.reason === "resolution-too-fine"
         ? `Resolution ${effectiveResolution} is too fine for this range; choose Auto or coarsen it`
         : history.coverage.reason === "custom-range-required"
           ? "Custom history requires both a start and end date"
           : "Custom history dates are invalid or outside the retained window"
     : history?.coverage.state === "partial"
-      ? `Partial retained coverage · ${effectiveResolution} buckets · oldest sample ${formatObservedAt(history.coverage.oldestSampleAt)}`
+      ? `Partial retained coverage · ${effectiveResolution} buckets · oldest point ${formatObservedAt(history.coverage.oldestSampleAt)}`
       : history?.coverage.state === "empty"
-        ? `No retained samples in this range · ${effectiveResolution} buckets`
+        ? `No retained points in this range · ${effectiveResolution} buckets`
         : history ? `Complete retained coverage · ${effectiveResolution} buckets` : null;
   const latestSampleMessage = history?.coverage.newestSampleAt
-    ? ` · latest sample ${formatObservedAt(history.coverage.newestSampleAt)}`
+    ? ` · latest point ${formatObservedAt(history.coverage.newestSampleAt)}`
     : "";
 
   return (
@@ -469,7 +478,7 @@ export function PowerDashboard({
         <div className="page-header__meta">
           <span className={`status-badge ${dataMode === "mock" ? "status-badge--mock" : "status-badge--live"}`}>{badge}</span>
           <small>Current {currentFreshness.state} · History {historyFreshness.state}</small>
-          <small>Observed {formatObservedAt(currentFreshness.observedAt)} · retained update {formatObservedAt(historyFreshness.observedAt)}</small>
+          <small>Current FRM observed {formatObservedAt(currentFreshness.observedAt)} · History source current {formatObservedAt(historyFreshness.observedAt)}</small>
           <small role="status" aria-label="Power refresh status">{refreshStatus}</small>
         </div>
       </header>
@@ -534,7 +543,7 @@ export function PowerDashboard({
         ) : history.coverage.state === "unsupported" ? (
           <div className="power-chart-empty"><h2>Requested history is not available</h2><p>{coverageMessage}</p><p>Choose Auto or a coarser resolution, or select a range within the current retention horizon.</p></div>
         ) : historyPointCount === 0 ? (
-          <div className="power-chart-empty"><h2>No retained samples</h2><p>The history source answered successfully but has no samples for this range.</p></div>
+          <div className="power-chart-empty"><h2>No retained points</h2><p>The history source answered successfully but has no points for this range.</p></div>
         ) : (
           <>
             {drawableSeries.length > 0 ? (
@@ -545,7 +554,7 @@ export function PowerDashboard({
                   formatValue={formatMw}
                   formatTime={formatChartTime}
                   ariaLabel="Power history trend"
-                  emptyLabel="No telemetry samples"
+                  emptyLabel="No telemetry points"
                 />
                 <ul className="power-chart-legend">
                   {drawableSeries.map((item) => (
@@ -554,9 +563,9 @@ export function PowerDashboard({
                 </ul>
               </>
             ) : (
-              <div className="power-chart-empty"><h2>{historyPointCount === 1 ? "One retained sample" : "Retained samples"}</h2><p>There are not yet enough points to draw a trend. Values remain available in the summary.</p></div>
+              <div className="power-chart-empty"><h2>{historyPointCount === 1 ? "One retained point" : "Retained points"}</h2><p>There are not yet enough points to draw a trend. Values remain available in the summary.</p></div>
             )}
-            <div className="power-history-summary-wrap"><table className="power-history-summary" aria-label="Power history series summary"><thead><tr><th>Series</th><th>Circuit</th><th>Latest</th><th>Samples</th></tr></thead><tbody>{history.series.map((item) => <tr key={`${item.key}:${item.circuitId}`}><th scope="row">{seriesLabel(item)}</th><td>Circuit {item.circuitId}</td><td>{item.points.length ? formatMw(item.points[item.points.length - 1]!.value) : "—"}</td><td>{item.points.length} {item.points.length === 1 ? "sample" : "samples"}</td></tr>)}</tbody></table></div>
+            <div className="power-history-summary-wrap"><table className="power-history-summary" aria-label="Power history series summary"><thead><tr><th>Series</th><th>Circuit</th><th>Latest</th><th>Points</th></tr></thead><tbody>{history.series.map((item) => <tr key={`${item.key}:${item.circuitId}`}><th scope="row">{seriesLabel(item)}</th><td>Circuit {item.circuitId}</td><td>{item.points.length ? formatMw(item.points[item.points.length - 1]!.value) : "—"}</td><td>{item.points.length} {item.points.length === 1 ? "point" : "points"}</td></tr>)}</tbody></table></div>
           </>
         )}
         {history ? <p className="power-production-note">Historical production is not collected; charts show capacity, consumption, and corrected maximum demand only.</p> : null}

@@ -83,6 +83,7 @@ function config(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     prometheusServers: [],
     trustProxyHeaders: false,
     powerStreamEnabled: true,
+    prometheusScrapeIntervalSeconds: 15,
     ...overrides,
   };
 }

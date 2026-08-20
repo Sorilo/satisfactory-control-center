@@ -2,6 +2,28 @@
 
 All notable release changes are documented here.
 
+## [0.2.0-rc.4] - 2026-08-20
+
+### Added
+
+- Validated `PROMETHEUS_SCRAPE_INTERVAL_SECONDS` source-cadence configuration with safe 15-second default and 5-second RC.4 support.
+- Source-aware 5-second Power history resolution, Auto policy, structured source-fidelity rejection, and no-query safety for unsupported requests.
+- Regression coverage for zero-zero major-consumer filtering, 5-second provider/adapter propagation, 5-second history refresh, and point/source wording.
+
+### Changed
+
+- Major-consumer detail now omits every record whose current and maximum demand are both zero, regardless of circuit membership.
+- Power history UI says points, uses `No telemetry points`, and separates current FRM freshness from `History source current <UTC timestamp>`.
+- Compose, deployment, API, data-source, and release metadata now describe the RC.4 cadence contract and retain 15-day/2,000-point bounds.
+
+### Boundaries
+
+- External operator Prometheus configuration must be verified at global `scrape_interval: 5s` before setting the application cadence to `5`; the application repository contains no operator checkout and this gate remains deployment-owned.
+- No final `v0.2.0`, Slice 3, PostgreSQL persistence, map/location contract, viewport zoom, or `15m/1s` live trace.
+- RC.3 and RC.2 remain preserved rollback releases; no existing tag or release is overwritten.
+
+See [`docs/releases/v0.2.0-rc.4.md`](docs/releases/v0.2.0-rc.4.md) for the implementation delta, safety boundary, and remaining release gates.
+
 ## [0.2.0-rc.3] - 2026-08-20
 
 ### Added

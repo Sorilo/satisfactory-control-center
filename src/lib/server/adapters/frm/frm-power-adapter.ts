@@ -274,8 +274,7 @@ function compareGenerators(a: PowerGenerator, b: PowerGenerator): number {
 function isUsefulConsumer(raw: RawPowerUsage): boolean {
   return (
     raw.PowerInfo.PowerConsumed > 0 ||
-    raw.PowerInfo.MaxPowerConsumed > 0 ||
-    raw.PowerInfo.CircuitGroupID >= 0
+    raw.PowerInfo.MaxPowerConsumed > 0
   );
 }
 

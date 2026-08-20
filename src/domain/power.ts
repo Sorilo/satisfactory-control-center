@@ -89,6 +89,7 @@ export type PowerHistoryRange = (typeof POWER_HISTORY_RANGES)[number];
 
 export const POWER_HISTORY_RESOLUTIONS = [
   "auto",
+  "5s",
   "15s",
   "30s",
   "1m",
@@ -101,6 +102,7 @@ export const POWER_HISTORY_RESOLUTIONS = [
 export type PowerHistoryResolution = (typeof POWER_HISTORY_RESOLUTIONS)[number];
 
 export const POWER_EFFECTIVE_RESOLUTIONS = [
+  "5s",
   "15s",
   "30s",
   "1m",
@@ -132,7 +134,7 @@ export interface PowerHistorySeries {
 
 export interface PowerHistoryCoverage {
   state: "complete" | "partial" | "empty" | "unsupported";
-  reason?: "retention-unavailable" | "resolution-too-fine" | "custom-range-required" | "invalid-custom-range";
+  reason?: "retention-unavailable" | "source-fidelity-too-fine" | "resolution-too-fine" | "custom-range-required" | "invalid-custom-range";
   requestedRange: PowerHistoryRange;
   effectiveResolution: PowerEffectiveResolution;
   retentionHorizonDays: 15;
@@ -245,6 +247,7 @@ export function parseBatterySeconds(raw: string | null | undefined): number | nu
 }
 
 const STEP_SECONDS: Record<PowerEffectiveResolution, number> = {
+  "5s": 5,
   "15s": 15,
   "30s": 30,
   "1m": 60,
@@ -255,7 +258,20 @@ const STEP_SECONDS: Record<PowerEffectiveResolution, number> = {
   "1h": 60 * 60,
 };
 
-const AUTO_RESOLUTION: Record<PowerHistoryRange, PowerEffectiveResolution> = {
+const AUTO_RESOLUTION_5S_SOURCE: Record<PowerHistoryRange, PowerEffectiveResolution> = {
+  "15m": "5s",
+  "1h": "5s",
+  "6h": "15s",
+  "24h": "1m",
+  "7d": "10m",
+  "15d": "15m",
+  ytd: "1h",
+  "1y": "1h",
+  lifetime: "1h",
+  custom: "5s",
+};
+
+const AUTO_RESOLUTION_15S_SOURCE: Record<PowerHistoryRange, PowerEffectiveResolution> = {
   "15m": "15s",
   "1h": "15s",
   "6h": "30s",
@@ -265,7 +281,7 @@ const AUTO_RESOLUTION: Record<PowerHistoryRange, PowerEffectiveResolution> = {
   ytd: "1h",
   "1y": "1h",
   lifetime: "1h",
-  custom: "1m",
+  custom: "15s",
 };
 
 const FIXED_RANGE_SECONDS: Partial<Record<PowerHistoryRange, number>> = {
@@ -277,19 +293,68 @@ const FIXED_RANGE_SECONDS: Partial<Record<PowerHistoryRange, number>> = {
   "15d": 15 * 24 * 60 * 60,
 };
 
+const AUTO_CANDIDATES: PowerEffectiveResolution[] = [
+  "5s",
+  "15s",
+  "30s",
+  "1m",
+  "2m",
+  "5m",
+  "10m",
+  "15m",
+  "1h",
+];
+
 export const POWER_RETENTION_HORIZON_DAYS = 15;
 export const POWER_MAX_POINTS_PER_SERIES = 2_000;
 
-/** Resolve Auto only; manual resolutions remain independent and explicit. */
+function isSourceSupportedResolution(
+  resolution: PowerEffectiveResolution,
+  sourceIntervalSeconds: number
+): boolean {
+  return STEP_SECONDS[resolution] >= sourceIntervalSeconds;
+}
+
+function selectAutoResolution(
+  range: PowerHistoryRange,
+  sourceIntervalSeconds: number,
+  durationSeconds?: number
+): PowerEffectiveResolution {
+  const duration = durationSeconds ?? FIXED_RANGE_SECONDS[range];
+  if (range !== "custom" && FIXED_RANGE_SECONDS[range] !== undefined) {
+    return sourceIntervalSeconds <= 5
+      ? AUTO_RESOLUTION_5S_SOURCE[range]
+      : AUTO_RESOLUTION_15S_SOURCE[range];
+  }
+  if (duration === undefined) {
+    return isSourceSupportedResolution("5s", sourceIntervalSeconds)
+      ? "5s"
+      : AUTO_RESOLUTION_15S_SOURCE[range];
+  }
+
+  for (const candidate of AUTO_CANDIDATES) {
+    if (!isSourceSupportedResolution(candidate, sourceIntervalSeconds)) continue;
+    if (Math.ceil(duration / STEP_SECONDS[candidate]) <= POWER_MAX_POINTS_PER_SERIES) {
+      return candidate;
+    }
+  }
+  return "1h";
+}
+
+/** Resolve Auto using the validated source cadence; manual resolutions stay explicit. */
 export function effectiveResolution(
   range: PowerHistoryRange,
-  requested: PowerHistoryResolution
+  requested: PowerHistoryResolution,
+  sourceIntervalSeconds = 15
 ): PowerEffectiveResolution {
-  return requested === "auto" ? AUTO_RESOLUTION[range] : requested;
+  return requested === "auto"
+    ? selectAutoResolution(range, sourceIntervalSeconds)
+    : requested;
 }
 
 export type PowerHistoryPlanReason =
   | "retention-unavailable"
+  | "source-fidelity-too-fine"
   | "resolution-too-fine"
   | "custom-range-required"
   | "invalid-custom-range";
@@ -310,31 +375,45 @@ export type PowerHistoryRequestPlan =
     };
 
 /**
- * Apply the current 15-day retention and 2,000-point-per-series bounds before
- * any upstream query is constructed. Long-range identifiers stay in the
- * contract, but are explicitly unsupported until longer retention exists.
+ * Apply the current 15-day retention, source-fidelity, and 2,000-point-per-series
+ * bounds before any upstream query is constructed.
  */
 export function resolveHistoryRequest(
   request: PowerHistoryRequest,
-  now = new Date()
+  now = new Date(),
+  sourceIntervalSeconds = 15
 ): PowerHistoryRequestPlan {
-  const effective = effectiveResolution(request.range, request.resolution);
   let startAt: Date;
   let endAt: Date;
 
   if (request.range === "custom") {
     if (!request.startAt || !request.endAt) {
-      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "custom-range-required" };
+      return {
+        supported: false,
+        effectiveResolution: effectiveResolution(request.range, request.resolution, sourceIntervalSeconds),
+        expectedPointsPerSeries: null,
+        reason: "custom-range-required",
+      };
     }
     startAt = new Date(request.startAt);
     endAt = new Date(request.endAt);
     if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || startAt >= endAt) {
-      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "invalid-custom-range" };
+      return {
+        supported: false,
+        effectiveResolution: effectiveResolution(request.range, request.resolution, sourceIntervalSeconds),
+        expectedPointsPerSeries: null,
+        reason: "invalid-custom-range",
+      };
     }
   } else {
     const seconds = FIXED_RANGE_SECONDS[request.range];
     if (seconds === undefined) {
-      return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "retention-unavailable" };
+      return {
+        supported: false,
+        effectiveResolution: effectiveResolution(request.range, request.resolution, sourceIntervalSeconds),
+        expectedPointsPerSeries: null,
+        reason: "retention-unavailable",
+      };
     }
     endAt = new Date(now);
     startAt = new Date(endAt.getTime() - seconds * 1000);
@@ -343,10 +422,27 @@ export function resolveHistoryRequest(
   const nowMs = now.getTime();
   const retentionStartMs = nowMs - POWER_RETENTION_HORIZON_DAYS * 24 * 60 * 60 * 1000;
   if (startAt.getTime() < retentionStartMs || endAt.getTime() > nowMs) {
-    return { supported: false, effectiveResolution: effective, expectedPointsPerSeries: null, reason: "retention-unavailable" };
+    return {
+      supported: false,
+      effectiveResolution: effectiveResolution(request.range, request.resolution, sourceIntervalSeconds),
+      expectedPointsPerSeries: null,
+      reason: "retention-unavailable",
+    };
   }
 
   const durationSeconds = (endAt.getTime() - startAt.getTime()) / 1000;
+  const effective = request.resolution === "auto"
+    ? selectAutoResolution(request.range, sourceIntervalSeconds, durationSeconds)
+    : request.resolution;
+  if (!isSourceSupportedResolution(effective, sourceIntervalSeconds)) {
+    return {
+      supported: false,
+      effectiveResolution: effective,
+      expectedPointsPerSeries: null,
+      reason: "source-fidelity-too-fine",
+    };
+  }
+
   const expectedPointsPerSeries = Math.ceil(durationSeconds / STEP_SECONDS[effective]);
   if (expectedPointsPerSeries > POWER_MAX_POINTS_PER_SERIES) {
     return { supported: false, effectiveResolution: effective, expectedPointsPerSeries, reason: "resolution-too-fine" };

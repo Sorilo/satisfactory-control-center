@@ -36,7 +36,7 @@ export function createPowerProviders(
   if (config.dataMode === "mock") {
     return {
       current: new MockPowerProvider(),
-      history: new MockPowerHistoryProvider(),
+      history: new MockPowerHistoryProvider(config.prometheusScrapeIntervalSeconds),
     };
   }
 
@@ -53,6 +53,7 @@ export function createPowerProviders(
           baseUrl: prometheus.baseUrl,
           urlLabel: prometheus.urlLabel,
           sessionLabel: prometheus.sessionLabel,
+          sourceIntervalSeconds: config.prometheusScrapeIntervalSeconds,
         })
       : null,
   };

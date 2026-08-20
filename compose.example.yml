@@ -1,6 +1,6 @@
 services:
   control-center:
-    image: ${CONTROL_CENTER_IMAGE:-ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.3}
+    image: ${CONTROL_CENTER_IMAGE:-ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4}
     restart: unless-stopped
     init: true
     environment:
@@ -11,6 +11,7 @@ services:
       FRM_TOKEN: ${FRM_TOKEN:-}
       SERVERS_JSON: ${SERVERS_JSON:-}
       PROMETHEUS_SERVERS_JSON: ${PROMETHEUS_SERVERS_JSON:-}
+      PROMETHEUS_SCRAPE_INTERVAL_SECONDS: ${PROMETHEUS_SCRAPE_INTERVAL_SECONDS:-15}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       POWER_STREAM_ENABLED: ${POWER_STREAM_ENABLED:-false}
     ports:

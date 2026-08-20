@@ -214,4 +214,71 @@ describe("power domain derivations", () => {
       reason: "retention-unavailable",
     });
   });
+
+  it("selects source-aware five-second Auto resolutions within the point bound", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    const expected: Array<["15m" | "1h" | "6h" | "24h" | "7d" | "15d", string, number]> = [
+      ["15m", "5s", 180],
+      ["1h", "5s", 720],
+      ["6h", "15s", 1_440],
+      ["24h", "1m", 1_440],
+      ["7d", "10m", 1_008],
+      ["15d", "15m", 1_440],
+    ];
+
+    for (const [range, effective, expectedPointsPerSeries] of expected) {
+      expect(resolveHistoryRequest({ range, resolution: "auto" }, now, 5)).toMatchObject({
+        supported: true,
+        effectiveResolution: effective,
+        expectedPointsPerSeries,
+      });
+    }
+  });
+
+  it("never selects five-second Auto resolution when the source cadence is fifteen seconds", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    expect(resolveHistoryRequest({ range: "15m", resolution: "auto" }, now, 15)).toMatchObject({
+      supported: true,
+      effectiveResolution: "15s",
+    });
+    expect(resolveHistoryRequest({ range: "6h", resolution: "auto" }, now, 15)).toMatchObject({
+      supported: true,
+      effectiveResolution: "30s",
+    });
+  });
+
+  it("rejects manual resolutions finer than the validated source before point planning", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    expect(resolveHistoryRequest({ range: "15m", resolution: "5s" }, now, 15)).toMatchObject({
+      supported: false,
+      reason: "source-fidelity-too-fine",
+    });
+  });
+
+  it("keeps five-second source fidelity separate from the point-budget rejection", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    expect(resolveHistoryRequest({ range: "6h", resolution: "5s" }, now, 5)).toMatchObject({
+      supported: false,
+      reason: "resolution-too-fine",
+      expectedPointsPerSeries: 4_320,
+    });
+  });
+
+  it("chooses custom Auto resolution from source fidelity and the point budget", () => {
+    const now = new Date("2026-08-18T18:00:00.000Z");
+    const base = {
+      range: "custom" as const,
+      resolution: "auto" as const,
+    };
+    expect(resolveHistoryRequest({
+      ...base,
+      startAt: "2026-08-18T17:00:00.000Z",
+      endAt: "2026-08-18T17:05:00.000Z",
+    }, now, 5)).toMatchObject({ supported: true, effectiveResolution: "5s", expectedPointsPerSeries: 60 });
+    expect(resolveHistoryRequest({
+      ...base,
+      startAt: "2026-08-18T00:00:00.000Z",
+      endAt: "2026-08-18T18:00:00.000Z",
+    }, now, 5)).toMatchObject({ supported: true, effectiveResolution: "1m", expectedPointsPerSeries: 1_080 });
+  });
 });
