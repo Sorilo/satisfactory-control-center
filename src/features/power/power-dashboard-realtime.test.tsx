@@ -271,17 +271,25 @@ describe("PowerDashboard realtime recovery", () => {
       })
     );
 
-    render(<PowerDashboard envelope={envelopeWithHistory()} dataMode="live" streamEnabled />);
-    expect(screen.getByText(/2 samples/i)).toBeInTheDocument();
+    render(
+      <PowerDashboard
+        envelope={envelopeWithHistory()}
+        dataMode="live"
+        streamEnabled
+        sourceIntervalSeconds={5}
+      />
+    );
+    expect(screen.getByText(/2 points/i)).toBeInTheDocument();
 
-    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/power?serverId=main&range=1h&resolution=auto",
       expect.objectContaining({ cache: "no-store" })
     );
-    expect(screen.getByText(/3 samples/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 points/i)).toBeInTheDocument();
     expect(screen.getByText(/6:01:00 PM UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/History source current/i)).toBeInTheDocument();
   });
 
   it("ignores malformed power-details events without failing or closing the healthy stream", async () => {

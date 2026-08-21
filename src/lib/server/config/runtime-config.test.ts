@@ -7,6 +7,22 @@ describe("runtime configuration", () => {
     expect(config.dataMode).toBe("mock");
     expect(config.defaultServerId).toBe("main");
     expect(getPublicServerCatalog(config)).toEqual([{ id: "main", displayName: "Main World" }]);
+    expect(config.prometheusScrapeIntervalSeconds).toBe(15);
+  });
+
+  it("accepts a validated five-second Prometheus scrape interval", () => {
+    expect(
+      parseRuntimeConfig({ DATA_MODE: "mock", PROMETHEUS_SCRAPE_INTERVAL_SECONDS: "5" })
+        .prometheusScrapeIntervalSeconds
+    ).toBe(5);
+  });
+
+  it("rejects unsupported Prometheus scrape intervals", () => {
+    for (const value of ["0", "-5", "10", "15.5", "nope", "60"]) {
+      expect(() =>
+        parseRuntimeConfig({ DATA_MODE: "mock", PROMETHEUS_SCRAPE_INTERVAL_SECONDS: value })
+      ).toThrow(/PROMETHEUS_SCRAPE_INTERVAL_SECONDS/);
+    }
   });
 
   it("keeps the power stream disabled unless explicitly enabled", () => {

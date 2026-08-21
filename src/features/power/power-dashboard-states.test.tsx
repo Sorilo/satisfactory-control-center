@@ -221,7 +221,7 @@ describe("PowerDashboard state matrix", () => {
     render(<PowerDashboard envelope={envelope()} dataMode="live" />);
     expect(screen.getByText(/complete retained coverage/i)).toBeInTheDocument();
     const summary = screen.getByRole("table", { name: /power history series summary/i });
-    expect(within(summary).getByRole("row", { name: /capacity.*circuit 7.*100 mw.*2 samples/i })).toBeInTheDocument();
+    expect(within(summary).getByRole("row", { name: /capacity.*circuit 7.*100 mw.*2 points/i })).toBeInTheDocument();
   });
 
   it("keeps a valid one-point history series distinct from empty history", () => {
@@ -230,10 +230,10 @@ describe("PowerDashboard state matrix", () => {
       { timestamp: "2026-08-18T18:00:00.000Z", value: 100 },
     ];
     render(<PowerDashboard envelope={value} dataMode="live" />);
-    expect(screen.getByRole("heading", { name: /one retained sample/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /no retained samples/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /one retained point/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /no retained points/i })).not.toBeInTheDocument();
     const summary = screen.getByRole("table", { name: /power history series summary/i });
-    expect(within(summary).getByRole("row", { name: /capacity.*circuit 7.*100 mw.*1 sample/i })).toBeInTheDocument();
+    expect(within(summary).getByRole("row", { name: /capacity.*circuit 7.*100 mw.*1 point/i })).toBeInTheDocument();
   });
 
   it("discloses successful empty history and unsupported production", () => {
@@ -247,8 +247,8 @@ describe("PowerDashboard state matrix", () => {
     value.data.history!.series = [];
     value.freshness.history = { state: "live", observedAt: null };
     render(<PowerDashboard envelope={value} dataMode="live" />);
-    expect(screen.getByText(/no retained samples in this range/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "No retained samples" })).toBeInTheDocument();
+    expect(screen.getByText(/no retained points in this range/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No retained points" })).toBeInTheDocument();
     expect(screen.getByText(/historical production is not collected/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /power history trend/i })).not.toBeInTheDocument();
   });

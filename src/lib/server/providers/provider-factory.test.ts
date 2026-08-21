@@ -54,6 +54,13 @@ describe("provider factory", () => {
     ]);
   });
 
+  it("passes the validated source cadence into mock history planning", async () => {
+    const config = parseRuntimeConfig({ DATA_MODE: "mock", PROMETHEUS_SCRAPE_INTERVAL_SECONDS: "5" });
+    const providers = createPowerProviders(config, resolvePublicServer(config, "main"));
+    const history = await providers.history!.getHistory({ range: "15m", resolution: "5s" });
+    expect(history.coverage).toMatchObject({ state: "complete", effectiveResolution: "5s" });
+  });
+
   it("creates fixed live adapters and keeps Prometheus optional per server", () => {
     const config = parseRuntimeConfig({
       DATA_MODE: "live",

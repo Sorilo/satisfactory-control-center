@@ -33,11 +33,13 @@ export interface PrometheusPowerHistoryAdapterOptions {
   maxResponseBytes?: number;
   timeoutMs?: number;
   now?: () => Date;
+  sourceIntervalSeconds?: number;
 }
 
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 5000;
 const STEP_MS: Record<PowerEffectiveResolution, number> = {
+  "5s": 5_000,
   "15s": 15_000,
   "30s": 30_000,
   "1m": 60_000,
@@ -57,6 +59,7 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
   private readonly maxResponseBytes: number;
   private readonly timeoutMs: number;
   private readonly now: () => Date;
+  private readonly sourceIntervalSeconds: number;
 
   constructor(options: PrometheusPowerHistoryAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -66,10 +69,11 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.now = options.now ?? (() => new Date());
+    this.sourceIntervalSeconds = options.sourceIntervalSeconds ?? 15;
   }
 
   async getHistory(request: PowerHistoryRequest): Promise<PowerHistoryResult> {
-    const plan = resolveHistoryRequest(request, this.now());
+    const plan = resolveHistoryRequest(request, this.now(), this.sourceIntervalSeconds);
     if (!plan.supported) {
       return {
         observedAt: null,

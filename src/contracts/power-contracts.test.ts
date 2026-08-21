@@ -117,6 +117,20 @@ function withCurrent(overrides: Partial<PowerEnvelope["data"]["current"]>): Powe
 }
 
 describe("power v1 contracts", () => {
+  it("accepts the five-second history resolution and source-fidelity coverage reason", () => {
+    expect(powerResolutionSchema.parse("5s")).toBe("5s");
+    expect(powerEffectiveResolutionSchema.parse("5s")).toBe("5s");
+
+    const envelope = validEnvelope();
+    envelope.data.history!.coverage = {
+      ...envelope.data.history!.coverage,
+      state: "unsupported",
+      reason: "source-fidelity-too-fine",
+      effectiveResolution: "5s",
+    } as never;
+    expect(() => powerEnvelopeSchema.parse(envelope)).not.toThrow();
+  });
+
   it("accepts a fully populated strict envelope", () => {
     expect(() => powerEnvelopeSchema.parse(validEnvelope())).not.toThrow();
   });
@@ -358,12 +372,12 @@ describe("power v1 contracts", () => {
     }
     expect(() => powerRangeSchema.parse("30d")).toThrow();
 
-    for (const resolution of ["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
+    for (const resolution of ["auto", "5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
       expect(powerResolutionSchema.parse(resolution)).toBe(resolution);
     }
     expect(() => powerResolutionSchema.parse("3m")).toThrow();
 
-    for (const effective of ["15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
+    for (const effective of ["5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]) {
       expect(powerEffectiveResolutionSchema.parse(effective)).toBe(effective);
     }
   });

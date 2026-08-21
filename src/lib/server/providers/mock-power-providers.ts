@@ -83,8 +83,10 @@ export class MockPowerProvider implements PowerProvider {
 }
 
 export class MockPowerHistoryProvider implements PowerHistoryProvider {
+  constructor(private readonly sourceIntervalSeconds = 15) {}
+
   async getHistory(request: PowerHistoryRequest): Promise<PowerHistoryResult> {
-    const plan = resolveHistoryRequest(request, new Date(OBSERVED_AT));
+    const plan = resolveHistoryRequest(request, new Date(OBSERVED_AT), this.sourceIntervalSeconds);
     if (!plan.supported) {
       return {
         observedAt: null,
@@ -109,7 +111,11 @@ export class MockPowerHistoryProvider implements PowerHistoryProvider {
       coverage: {
         state: "complete",
         requestedRange: request.range,
-        effectiveResolution: effectiveResolution(request.range, request.resolution),
+        effectiveResolution: effectiveResolution(
+          request.range,
+          request.resolution,
+          this.sourceIntervalSeconds
+        ),
         retentionHorizonDays: 15,
         oldestSampleAt: points[0]?.timestamp ?? null,
         newestSampleAt: points[points.length - 1]?.timestamp ?? null,

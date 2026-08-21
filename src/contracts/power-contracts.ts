@@ -6,8 +6,8 @@ const circuitIdSchema = z.string().regex(/^(0|[1-9]\d*)$/);
 const opaqueServerIdSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
 
 export const powerRangeSchema = z.enum(["15m", "1h", "6h", "24h", "7d", "15d", "ytd", "1y", "lifetime", "custom"]);
-export const powerResolutionSchema = z.enum(["auto", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
-export const powerEffectiveResolutionSchema = z.enum(["15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
+export const powerResolutionSchema = z.enum(["auto", "5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
+export const powerEffectiveResolutionSchema = z.enum(["5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"]);
 const customDateSchema = z.string().min(1).refine((value) => Number.isFinite(Date.parse(value)), "Invalid date");
 
 const powerHistoryRequestBaseSchema = z
@@ -182,7 +182,7 @@ const historySchema = z
     coverage: z
       .object({
         state: z.enum(["complete", "partial", "empty", "unsupported"]),
-        reason: z.enum(["retention-unavailable", "resolution-too-fine", "custom-range-required", "invalid-custom-range"]).optional(),
+        reason: z.enum(["retention-unavailable", "source-fidelity-too-fine", "resolution-too-fine", "custom-range-required", "invalid-custom-range"]).optional(),
         requestedRange: powerRangeSchema,
         effectiveResolution: powerEffectiveResolutionSchema,
         retentionHorizonDays: z.literal(15),

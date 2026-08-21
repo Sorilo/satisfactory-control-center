@@ -1,6 +1,6 @@
 # ADR-004: Constrained historical queries
 
-**Status:** Accepted; Slice 2 Prometheus scope defined 2026-08-18
+**Status:** Accepted; Slice 2 RC.4 source-cadence correction defined 2026-08-20
 
 ## Decision
 
@@ -25,7 +25,7 @@ frmcache does not poll `getPower`; its history table retains roughly one hour fo
 
 ## Operational assumptions
 
-Task 0 binds deployed Prometheus image ID `sha256:8da6d95a8747c08872fbffa86d35a9c39433cbe908ce8e5939ad34087cceac86` and runtime values `storage.tsdb.retention.time=15d`, `storage.tsdb.retention.size=0B`. Time retention is the active horizon, but actual per-series coverage may be shorter because of service age, missing metrics, or private session-label transitions. The inspected repository collects Companion data every five seconds but scrapes it every 15 seconds; public resolution is bounded by stored samples.
+Task 0 binds deployed Prometheus image ID `sha256:8da6d95a8747c08872fbffa86d35a9c39433cbe908ce8e5939ad34087cceac86` and runtime values `storage.tsdb.retention.time=15d`, `storage.tsdb.retention.size=0B`. Time retention is the active horizon, but actual per-series coverage may be shorter because of service age, missing metrics, or private session-label transitions. The required RC.4 Prometheus source cadence is 5 seconds, while runtime configuration defaults to 15 seconds for rollback compatibility until the external operator deployment is verified. Public `5s` resolution is source-fidelity gated; the application never implies 5-second data when the configured scrape source is coarser.
 
 ## Evidence
 
