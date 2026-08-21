@@ -42,7 +42,9 @@ const defaultLoader: PowerLoader = async (serverId, config, server, request) => 
     serverId,
     providers.current,
     providers.history,
-    request
+    request,
+    undefined,
+    config.prometheusScrapeIntervalSeconds
   );
 };
 

@@ -19,7 +19,8 @@ export default defineConfig({
         { id: "main", displayName: "Main World", enabled: true, public: true },
         { id: "beta", displayName: "Beta World", enabled: true, public: true }
       ]),
-      POWER_STREAM_ENABLED: "true"
+      POWER_STREAM_ENABLED: "true",
+      PROMETHEUS_SCRAPE_INTERVAL_SECONDS: "5"
     }
   },
   projects: [

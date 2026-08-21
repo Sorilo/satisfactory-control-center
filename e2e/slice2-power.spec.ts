@@ -1,6 +1,31 @@
 import { expect, test } from "@playwright/test";
+import type { PowerEnvelope } from "../src/contracts/power-contracts";
 
 const privateTerms = /session_name|private-url|private-session|promql|fixture-|classname|location/i;
+
+function rollingHistoryEnvelope(base: PowerEnvelope, newestSampleAt: string, signalValue: number): PowerEnvelope {
+  const value = structuredClone(base);
+  const newestTimestamp = Date.parse(newestSampleAt);
+  const points = Array.from({ length: 181 }, (_, index) => ({
+    timestamp: new Date(newestTimestamp - (180 - index) * 5_000).toISOString(),
+    value: index === signalValue - 10 ? signalValue : 100,
+  }));
+  value.generatedAt = newestSampleAt;
+  value.freshness.history = { state: "live", observedAt: newestSampleAt };
+  value.data.history = {
+    coverage: {
+      state: "complete",
+      requestedRange: "15m",
+      effectiveResolution: "5s",
+      retentionHorizonDays: 15,
+      oldestSampleAt: points[0]!.timestamp,
+      newestSampleAt,
+    },
+    series: [{ key: "capacityMw", circuitId: "0", points }],
+    production: { state: "unavailable", reason: "source-not-collected" },
+  };
+  return value;
+}
 
 test.describe("Slice 2 Power", () => {
   test("renders current and retained power from the shared mock service", async ({ page }, testInfo) => {
@@ -68,6 +93,45 @@ test.describe("Slice 2 Power", () => {
     await expect(page.getByRole("status", { name: "Power refresh status" })).toContainText(
       /Realtime live|Reconnecting realtime/
     );
+  });
+
+  test("refreshes rolling 15-minute five-second history through the browser path", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "desktop cadence evidence runs in the Chromium project");
+    const seedResponse = await page.request.get("/api/v1/power?serverId=main&range=15m&resolution=5s");
+    expect(seedResponse.ok()).toBe(true);
+    const seed = await seedResponse.json() as PowerEnvelope;
+    const responses = [
+      rollingHistoryEnvelope(seed, "2026-08-18T18:00:05.000Z", 101),
+      rollingHistoryEnvelope(seed, "2026-08-18T18:00:10.000Z", 102),
+      rollingHistoryEnvelope(seed, "2026-08-18T18:00:15.000Z", 103),
+    ];
+    let historyRequests = 0;
+
+    await page.route(/\/api\/v1\/power\?serverId=main&range=15m&resolution=5s$/, async (route) => {
+      const response = responses.shift();
+      if (!response) throw new Error("unexpected retained-history request");
+      historyRequests += 1;
+      await route.fulfill({ json: response });
+    });
+
+    await page.goto("/power?serverId=main&range=15m&resolution=5s");
+    await expect(page.getByRole("heading", { name: "Power history" })).toBeVisible();
+    const chartPath = page.locator(".ttsc__line").first();
+    let previousPath = await chartPath.getAttribute("d");
+    expect(previousPath).not.toBeNull();
+
+    for (const [index, expectedTime] of ["6:00:05 PM UTC", "6:00:10 PM UTC", "6:00:15 PM UTC"].entries()) {
+      await expect.poll(() => historyRequests, { timeout: 12_000 }).toBe(index + 1);
+      await expect(page.getByText(/181 points/i)).toBeVisible();
+      await expect(page.locator("body")).toContainText(expectedTime);
+      const nextPath = await chartPath.getAttribute("d");
+      expect(nextPath).not.toBeNull();
+      expect(nextPath).not.toBe(previousPath);
+      previousPath = nextPath;
+    }
+    expect(page.url()).toContain("range=15m");
+    expect(page.url()).toContain("resolution=5s");
+    await expect(page.locator("body")).not.toContainText(privateTerms);
   });
 
   test("applies a named power-details SSE event to generator and consumer DOM without navigation", async ({ page }, testInfo) => {

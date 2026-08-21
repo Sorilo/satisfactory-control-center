@@ -54,7 +54,9 @@ export async function PowerPage({ searchParams }: { searchParams: SearchParams }
         server.id,
         providers.current,
         providers.history,
-        historyRequest
+        historyRequest,
+        undefined,
+        config.prometheusScrapeIntervalSeconds
       );
       return {
         envelope,

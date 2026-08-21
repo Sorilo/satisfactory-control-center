@@ -1,13 +1,13 @@
-# Deploy v0.2.0-rc.4 on Unraid
+# Deploy v0.2.0-rc.5 on Unraid
 
 ## Slice 2 release-candidate boundary
 
-`v0.2.0-rc.4` is the current Slice 2 release candidate. It retains the RC.2 runtime boundary and adds the verified browser EventSource-to-DOM correction, source-aware 5-second history contracts gated by the configured Prometheus cadence, bounded retained-history refresh, independent range/resolution controls, custom-range validation, and explicit retention/resolution/source-fidelity unsupported states. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. It still does **not** include PostgreSQL history, persistence, the full map/location contract, viewport zoom, or a 15m/1s live trace. Those remain outside this RC in [`requirements-matrix.md`](requirements-matrix.md).
+`v0.2.0-rc.5` is the current Slice 2 release candidate. It retains the RC.2 runtime boundary and adds the verified browser EventSource-to-DOM correction, source-aware 5-second history contracts gated by the configured Prometheus cadence, bounded retained-history refresh, independent range/resolution controls, custom-range validation, and explicit retention/resolution/source-fidelity unsupported states. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. It still does **not** include PostgreSQL history, persistence, the full map/location contract, viewport zoom, or a 15m/1s live trace. Those remain outside this RC in [`requirements-matrix.md`](requirements-matrix.md).
 
 Published images after the tag release gate succeeds:
 
 - `ghcr.io/sorilo/satisfactory-control-center:latest` — current default branch.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4` — current Slice 2 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` — current Slice 2 release candidate.
 - `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision and preferred RC validation pin.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1` — prior Slice 2 rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — prior Slice 1 rollback release.
@@ -20,8 +20,8 @@ The repository/package is private by default. Create a GitHub token with only `r
 
 ```bash
 echo "$GHCR_READ_TOKEN" | docker login ghcr.io --username Sorilo --password-stdin
-docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4
-docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4 \
+docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5
+docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5 \
   --format '{{.Config.User}} {{json .Config.Healthcheck.Test}}'
 ```
 
@@ -46,7 +46,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 
 | Variable | Required/default | Purpose |
 |---|---|---|
-| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
+| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
 | `CONTROL_CENTER_BIND` | `127.0.0.1` | Host bind address. Change only when the LAN/reverse-proxy design requires it. |
 | `CONTROL_CENTER_PORT` | `3000` | Host-side application port. |
 | `GAME_NETWORK` | `sorilonet` placeholder | Existing external network shared with Satisfactory/FRM; inspect and replace if different. |
@@ -65,7 +65,7 @@ For live mode, provide either one `FRM_BASE_URL` plus optional `FRM_TOKEN`, or `
 
 Prometheus history is independently optional. `PROMETHEUS_SERVERS_JSON` does not alter `SERVERS_JSON`; unknown or duplicate server references, unknown keys, non-HTTP(S) URLs, and embedded URL credentials fail configuration validation. The configured `baseUrl` must be reachable through a network attached by the site-specific deployment. Do not expose Prometheus publicly merely to satisfy this connection.
 
-For RC.4 5-second history, the external monitoring deployment must set the global Prometheus `scrape_interval: 5s` in its authorized `prometheus/prometheus.yml` and must not override the power/Companion job with a coarser interval. Keep `evaluation_interval: 10s`, `storage.tsdb.retention.time=15d`, and `storage.tsdb.retention.size=0B` unchanged. Only after `promtool check config`, target health, and successive power samples confirm the 5-second cadence should the Control Center environment set `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`. If the operator deployment remains at 15s, leave the application value at `15`; requested `5s` history will be returned as structured unsupported coverage without an upstream query.
+For RC.5 5-second history, the external monitoring deployment must set the global Prometheus `scrape_interval: 5s` in its authorized `prometheus/prometheus.yml` and must not override the power/Companion job with a coarser interval. Keep `evaluation_interval: 10s`, `storage.tsdb.retention.time=15d`, and `storage.tsdb.retention.size=0B` unchanged. Only after `promtool check config`, target health, and successive power samples confirm the 5-second cadence should the Control Center environment set `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`. If the operator deployment remains at 15s, leave the application value at `15`; requested `5s` history will be returned as structured unsupported coverage without an upstream query.
 
 ## Start in mock mode
 
