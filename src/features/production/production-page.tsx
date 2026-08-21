@@ -1,7 +1,7 @@
 import { productionQuerySchema, type ProductionEnvelope, type ProductionQuery } from "@/contracts/production-contracts";
 import { ProductionDashboard } from "@/features/production/production-dashboard";
 import { createProductionProvider } from "@/lib/server/providers/provider-factory";
-import { getProductionEnvelope } from "@/lib/server/services/production-service";
+import { getCachedProductionEnvelope } from "@/lib/server/services/production-service";
 import { parseRuntimeConfig, resolvePublicServer, type DataMode } from "@/lib/server/config/runtime-config";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -13,7 +13,12 @@ export async function ProductionPage({ searchParams }: { searchParams: SearchPar
     const config = parseRuntimeConfig(process.env);
     const query = await searchParams;
     const requestedServer = typeof query.serverId === "string" ? query.serverId : config.defaultServerId;
-    const server = resolvePublicServer(config, requestedServer);
+    let server;
+    try {
+      server = resolvePublicServer(config, requestedServer);
+    } catch {
+      server = resolvePublicServer(config, config.defaultServerId);
+    }
     const parsed = productionQuerySchema.safeParse({
       serverId: server.id,
       search: typeof query.search === "string" ? query.search : undefined,
@@ -21,7 +26,7 @@ export async function ProductionPage({ searchParams }: { searchParams: SearchPar
       limit: typeof query.limit === "string" ? query.limit : undefined,
     });
     const productionQuery = parsed.success ? parsed.data : { serverId: server.id };
-    const envelope = await getProductionEnvelope(server.id, createProductionProvider(config, server), productionQuery);
+    const envelope = await getCachedProductionEnvelope(server.id, createProductionProvider(config, server), productionQuery);
     loaded = { envelope, dataMode: config.dataMode, query: productionQuery };
   } catch {
     loaded = null;

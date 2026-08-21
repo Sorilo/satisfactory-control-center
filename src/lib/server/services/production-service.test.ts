@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { getProductionEnvelope } from "./production-service";
+import { beforeEach, describe, expect, it } from "vitest";
+import { clearProductionServiceCachesForTests, getCachedProductionEnvelope, getProductionEnvelope } from "./production-service";
 import type { ProductionProvider, ProductionSnapshot } from "@/domain/production";
 
 const snapshot: ProductionSnapshot = {
@@ -42,6 +42,26 @@ const provider = (result: ProductionSnapshot | Error): ProductionProvider => ({
 });
 
 describe("production service", () => {
+  beforeEach(() => {
+    clearProductionServiceCachesForTests();
+  });
+
+  it("coalesces concurrent reads for the same server and query", async () => {
+    let calls = 0;
+    const countingProvider: ProductionProvider = {
+      getProduction: async () => {
+        calls += 1;
+        await Promise.resolve();
+        return snapshot;
+      },
+    };
+    const first = getCachedProductionEnvelope("main", countingProvider, { serverId: "main", search: "iron", limit: 1 });
+    const second = getCachedProductionEnvelope("main", countingProvider, { serverId: "main", search: "iron", limit: 1 });
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(calls).toBe(1);
+  });
+
   it("filters by bounded item key/search and caps result count", async () => {
     const envelope = await getProductionEnvelope("main", provider(snapshot), { serverId: "main", search: "iron", limit: 1 });
     expect(envelope.data?.items.map((item) => item.itemKey)).toEqual(["iron-rod"]);
@@ -55,11 +75,11 @@ describe("production service", () => {
   });
 
   it("returns a sanitized unavailable state without upstream details", async () => {
-    const envelope = await getProductionEnvelope("main", provider(new Error("http://frm:8080 private token=secret")), { serverId: "main" });
+    const envelope = await getProductionEnvelope("main", provider(new Error("http://frm:8080 private-value=redacted")), { serverId: "main" });
     expect(envelope.freshness.state).toBe("unavailable");
     expect(envelope.data).toBeNull();
     expect(envelope.unavailableSources).toEqual(["frm"]);
     expect(JSON.stringify(envelope)).not.toContain("frm:8080");
-    expect(JSON.stringify(envelope)).not.toContain("secret");
+    expect(JSON.stringify(envelope)).not.toContain("private-value");
   });
 });

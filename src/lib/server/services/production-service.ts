@@ -4,7 +4,39 @@ import type { ProductionProvider } from "@/domain/production";
 
 export type Clock = () => string;
 
+type CacheEntry<T> = { expiresAtMs: number; value: Promise<T> };
+
 const defaultClock: Clock = () => new Date().toISOString();
+const PRODUCTION_CACHE_TTL_MS = 5_000;
+const MAX_CACHE_ENTRIES = 100;
+const productionCache = new Map<string, CacheEntry<ProductionEnvelope>>();
+
+export function clearProductionServiceCachesForTests(): void {
+  productionCache.clear();
+}
+
+export function getCachedProductionEnvelope(
+  serverId: string,
+  provider: ProductionProvider,
+  query: ProductionQuery,
+  nowMs = Date.now()
+): Promise<ProductionEnvelope> {
+  const key = JSON.stringify({ serverId, search: query.search ?? null, itemKey: query.itemKey ?? null, limit: query.limit ?? null });
+  const cached = productionCache.get(key);
+  if (cached && cached.expiresAtMs > nowMs) return cached.value;
+  if (cached) productionCache.delete(key);
+  if (productionCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = productionCache.keys().next().value;
+    if (oldestKey !== undefined) productionCache.delete(oldestKey);
+  }
+
+  const value = getProductionEnvelope(serverId, provider, query);
+  productionCache.set(key, { expiresAtMs: nowMs + PRODUCTION_CACHE_TTL_MS, value });
+  void value.catch(() => {
+    if (productionCache.get(key)?.value === value) productionCache.delete(key);
+  });
+  return value;
+}
 
 export async function getProductionEnvelope(
   serverId: string,

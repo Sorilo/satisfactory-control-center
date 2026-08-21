@@ -5,6 +5,7 @@
 - Current-only Production slice with a pinned-source FRM `getProdStats` adapter, strict parsing, normalized item search/detail, production/consumption/net-rate metrics, theoretical capacity/efficiency fields, mock coverage, and responsive browser acceptance.
 - Explicit `production-history-not-observed` unsupported state; no PostgreSQL, Prometheus production history, or Grafana production claim.
 - Production assertions in the authoritative OCI/container smoke gate, including public-field privacy checks.
+- A bounded 5-second Production promise cache shared by API/page reads and stale-bookmark fallback to the configured default server.
 
 ### Changed
 

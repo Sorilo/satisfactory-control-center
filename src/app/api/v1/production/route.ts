@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { productionQuerySchema } from "@/contracts/production-contracts";
-import { getProductionEnvelope } from "@/lib/server/services/production-service";
+import { getCachedProductionEnvelope } from "@/lib/server/services/production-service";
 import { createProductionProvider } from "@/lib/server/providers/provider-factory";
 import { getClientKey, TokenBucketLimiter } from "@/lib/server/security/rate-limiter";
 import { parseRuntimeConfig, resolvePublicServer } from "@/lib/server/config/runtime-config";
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     return respondError(404, "SERVER_NOT_FOUND", "Server not found.");
   }
 
-  const envelope = await getProductionEnvelope(
+  const envelope = await getCachedProductionEnvelope(
     server.id,
     createProductionProvider(config, server),
     parsedQuery.data
