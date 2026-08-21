@@ -20,11 +20,11 @@ This matrix prevents a production-shaped foundation from being mistaken for the 
 | Abuse protection | Bounded single-process token bucket + proxy guidance | Distributed/CDN enforcement deployment-owned |
 | Tests and CI | Unit/integration/e2e/build evidence + authoritative hosted container gate | The exact smoke-tested image artifact is the only artifact eligible for GHCR publication |
 | Architecture/security/deploy docs | Contracts, ADRs, threat/deploy guidance | Implemented; maintain per slice |
-| Phase 0 source/capability checkpoint | Immutable FRM/Companion/monitoring evidence, sanitized fixtures, explicit deployment blocker | Completed for pinned source; live validation blocked until `unraid-phase10` is reachable |
+| Phase 0 source/capability checkpoint | Immutable FRM/Companion/monitoring evidence, sanitized fixtures, explicit deployment blocker | Completed for pinned source; the original alias check was blocked at checkpoint, while the operator-validated Power profile is documented separately; Production live validation remains required |
 | Unraid compose example | Runtime networks/env/health/hardening/rollback | Implemented, network names must be inspected |
 | Structured logs/metrics | Sanitized public errors + health routes | Structured logger/redaction, request IDs, app metrics, dashboards pending |
 
-## Residual risks through Slice 2
+## Residual risks through Slice 3
 
 - The FRM overview reads its four non-Power fixed endpoints concurrently, but one failed endpoint currently degrades the whole overview envelope; section-level partial degradation remains future work. Its Power summary is independently composed through the shared `PowerService` current cache.
 - The in-process limiter is intentionally single-replica. With proxy-header trust disabled, clients share one conservative bucket; production relies on the documented trusted reverse-proxy/CDN policy for distributed per-client enforcement.

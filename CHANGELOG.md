@@ -1,6 +1,24 @@
-# Changelog
+## [0.2.0-rc.6] - 2026-08-21
 
-All notable release changes are documented here.
+### Added
+
+- Current-only Production slice with a pinned-source FRM `getProdStats` adapter, strict parsing, normalized item search/detail, production/consumption/net-rate metrics, theoretical capacity/efficiency fields, mock coverage, and responsive browser acceptance.
+- Explicit `production-history-not-observed` unsupported state; no PostgreSQL, Prometheus production history, or Grafana production claim.
+- Production assertions in the authoritative OCI/container smoke gate, including public-field privacy checks.
+
+### Changed
+
+- Shared runtime foundation now carries source-state/provenance semantics, request IDs, structured redacted logs, privacy flags, and bounded retry behavior across the existing Overview and Power paths.
+- Candidate identity, Compose defaults, deployment examples, and OCI build metadata target `v0.2.0-rc.6`.
+- The operator-validated Unraid Power profile is documented with Prometheus `scrape_interval: 5s`, Control Center `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`, `evaluation_interval: 10s`, and the existing 15-day/2,000-point bounds. The repository-safe application default remains `15` outside that verified profile.
+
+### Boundaries
+
+- RC.5 Power behavior remains the rollback baseline: 15m/5s history, source-aware cache expiry, realtime SSE, major-consumer filtering, source-fidelity validation, privacy/security contracts, and bounded retention/points.
+- Production history remains explicitly unsupported; no fabricated history or production persistence is added.
+- No final `v0.2.0`, Map work, PostgreSQL persistence, or deployment mutation is included in this candidate.
+
+See [`docs/releases/v0.2.0-rc.6.md`](docs/releases/v0.2.0-rc.6.md) for the candidate boundary and verification gates.
 
 ## [0.2.0-rc.5] - 2026-08-21
 

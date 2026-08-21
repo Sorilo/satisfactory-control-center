@@ -1,6 +1,6 @@
 # Architecture review
 
-**Status:** Accepted through Slice 2; Phase 0 source-capability checkpoint accepted; later slices remain Planned.<br>
+**Status:** Accepted through Slice 3; Phase 0 source-capability checkpoint accepted; later slices remain Planned.<br>
 **Reviewed:** 2026-08-21 against immutable FRM, Companion, and satisfactory-monitoring revisions recorded in [`docs/data-sources.md`](data-sources.md).
 
 ## Scope and evidence labels

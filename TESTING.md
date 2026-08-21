@@ -17,7 +17,7 @@ PLAYWRIGHT_BROWSERS_PATH=.playwright npx playwright install chromium
 npm run test:e2e
 ```
 
-The mobile project uses Chromium with the Playwright iPhone viewport/touch profile so it can run on minimal Linux hosts without WebKit system packages. Slice 2 browser coverage verifies Overview and dedicated Power navigation, range/resolution propagation, independently available generator/major-consumer details, fuel inventory and zero-draw topology presentation, independent history degradation, desktop/mobile overflow, and absence of private labels/IDs/classes/locations. CI installs Chromium system dependencies. Manual Safari/iPhone verification remains required for changes involving complex gestures, viewport-safe areas, or browser-specific streaming behavior.
+The mobile project uses Chromium with the Playwright iPhone viewport/touch profile so it can run on minimal Linux hosts without WebKit system packages. Slice 2 browser coverage verifies Overview and dedicated Power navigation, range/resolution propagation, independently available generator/major-consumer details, fuel inventory and zero-draw topology presentation, independent history degradation, desktop/mobile overflow, and absence of private labels/IDs/classes/locations. Slice 3 adds current-only Production search/detail, valid empty results, explicit unsupported history, and production privacy-boundary coverage. CI installs Chromium system dependencies and runs both desktop and mobile projects. Manual Safari/iPhone verification remains required for changes involving complex gestures, viewport-safe areas, or browser-specific streaming behavior.
 
 ## Container acceptance
 

@@ -4,7 +4,7 @@
 
 A public-safe, read-only operations portal for multiplayer Satisfactory dedicated servers.
 
-> **Project status:** the production-shaped **Slices 1–2 are implemented**: the responsive foundation plus normalized current Power, bounded generator/major-consumer details, fixed-query Prometheus history, independent source/detail degradation, and an opt-in bounded Power SSE stream with fast current and slower detail channels plus polling fallback. `v0.2.0-rc.5` is the current Slice 2 release candidate; the larger major release is intentionally incomplete, and each remaining vertical is tracked in [`docs/requirements-matrix.md`](docs/requirements-matrix.md).
+> **Project status:** the production-shaped **Slices 1–3 are implemented**: the responsive foundation, normalized current Power with bounded generator/major-consumer details, fixed-query Prometheus history, independent source/detail degradation, opt-in bounded Power SSE with fast current and slower detail channels, and a current-only normalized Production view with explicit unsupported history. `v0.2.0-rc.6` is the current Slice 3 release candidate; the larger major release remains intentionally incomplete, and each remaining vertical is tracked in [`docs/requirements-matrix.md`](docs/requirements-matrix.md).
 
 ## Principles
 
@@ -43,8 +43,9 @@ The production image is published as:
 
 ```text
 ghcr.io/sorilo/satisfactory-control-center:latest
-ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5
+ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6
 ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>
+ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5
 ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1
 ghcr.io/sorilo/satisfactory-control-center:v0.1.0
 ```
@@ -60,6 +61,7 @@ Use [`compose.example.yml`](compose.example.yml) and the [Unraid deployment guid
 
 ## Documentation
 
+- [v0.2.0-rc.6 release-candidate notes](docs/releases/v0.2.0-rc.6.md)
 - [v0.2.0-rc.5 release-candidate notes](docs/releases/v0.2.0-rc.5.md)
 - [v0.2.0-rc.4 release-candidate notes](docs/releases/v0.2.0-rc.4.md)
 - [v0.2.0-rc.3 release-candidate notes](docs/releases/v0.2.0-rc.3.md)
