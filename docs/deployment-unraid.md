@@ -1,20 +1,21 @@
-# Deploy v0.2.0-rc.7 on Unraid
+# Deploy v0.2.0-rc.8 on Unraid
 
 ## Slice 3 production-candidate boundary
 
-`v0.2.0-rc.7` is the current Slice 3 release candidate. It retains the RC.5 Power runtime and source-aware history cache correction, the RC.6 bounded current-only Production view, and adds sanitized server-side diagnostics for Production upstream transport, timeout, and schema failures. Production history remains explicitly unsupported until selected-deployment retention evidence exists; no PostgreSQL, Prometheus production history, Grafana, or Map work is included. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. The operator-validated Power profile uses a 5-second Prometheus cadence; the repository-safe application default remains 15 seconds outside that profile.
+`v0.2.0-rc.8` is the current Slice 3 release candidate. It retains the RC.5 Power runtime and source-aware history cache correction, the RC.6 bounded current-only Production view, and adds sanitized server-side diagnostics for Production upstream transport, timeout, and schema failures. Production history remains explicitly unsupported until selected-deployment retention evidence exists; no PostgreSQL, Prometheus production history, Grafana, or Map work is included. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. The operator-validated Power profile uses a 5-second Prometheus cadence; the repository-safe application default remains 15 seconds outside that profile.
 
 Published images after the tag release gate succeeds:
 
 - `ghcr.io/sorilo/satisfactory-control-center:latest` — current default branch.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7` — current Slice 3 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.8` — current Slice 3 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7` — prior diagnostics candidate rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6` — prior Production candidate rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision and preferred RC validation pin.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` — prior validated Power rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4` — earlier Slice 2 rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — prior Slice 1 rollback release.
 
-Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.7` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
+Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.8` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
 
 ## Authenticate and pull
 
@@ -22,8 +23,8 @@ The repository/package is private by default. Create a GitHub token with only `r
 
 ```bash
 echo "$GHCR_READ_TOKEN" | docker login ghcr.io --username Sorilo --password-stdin
-docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7
-docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7 \
+docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.8
+docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.8 \
   --format '{{.Config.User}} {{json .Config.Healthcheck.Test}}'
 ```
 
@@ -48,7 +49,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 
 | Variable | Required/default | Purpose |
 |---|---|---|
-| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
+| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.8` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
 | `CONTROL_CENTER_BIND` | `127.0.0.1` | Host bind address. Change only when the LAN/reverse-proxy design requires it. |
 | `CONTROL_CENTER_PORT` | `3000` | Host-side application port. |
 | `GAME_NETWORK` | `sorilonet` placeholder | Existing external network shared with Satisfactory/FRM; inspect and replace if different. |
@@ -166,6 +167,6 @@ Production upstream failures are logged as one-line JSON on the container stdout
 
 ## Rollback
 
-Keep the previous known-good image tag and external environment file. To roll back RC.7, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6`, retain `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5` for the validated Power profile, set `POWER_STREAM_ENABLED=false`, and recreate only Control Center. The RC.6 rollback retains the current-only Production view but removes the RC.7 diagnostic correction; it requires no application data migration or persistent volume.
+Keep the previous known-good image tag and external environment file. To roll back RC.8, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.7`, retain `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5` for the validated Power profile, set `POWER_STREAM_ENABLED=false`, and recreate only Control Center. The RC.7 rollback retains the RC.7 current-only Production view and structured diagnostics but removes the RC.8 FRM compatibility correction; it requires no application data migration or persistent volume.
 
 For a current-only rollback, remove `PROMETHEUS_SERVERS_JSON` (and any site-specific monitoring-network override) while retaining the unchanged FRM `SERVERS_JSON`. No data migration or application volume is involved.

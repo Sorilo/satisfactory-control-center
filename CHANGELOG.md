@@ -1,4 +1,23 @@
-## [0.2.0-rc.7] - 2026-08-21
+## [0.2.0-rc.8] - 2026-08-21
+
+### Fixed
+
+- Corrected the FRM `getProdStats` adapter for the observed 1.5.3 payload: the formatted `ProdPerMin` string is now bounded and tolerated without being parsed as telemetry, numeric zero/fractional values remain valid, and non-empty FRM form strings are accepted with unknown values normalized to public `Unknown`.
+- Numeric production/consumption fields are validated as finite non-negative values and percentage fields accept the full `0`–`100` range.
+
+### Added
+
+- Sanitized three-row real-Unraid-shaped regression coverage for Biomass, Iron Ingot, and Iron Ore, including zero values, fractional consumption, formatted `ProdPerMin`, negative calculated Biomass net, public privacy, and unsupported history preservation.
+
+### Boundaries
+
+- RC.7 structured diagnostics remain unchanged and server-side only.
+- `ClassName` and raw `ProdPerMin` never cross the public API boundary.
+- Power behavior remains unchanged; Production history remains explicitly unsupported.
+- No final `v0.2.0`, Map work, or deployment mutation is included in the source candidate.
+
+See [`docs/releases/v0.2.0-rc.8.md`](docs/releases/v0.2.0-rc.8.md) for the candidate boundary, exact mismatch, verification gates, and rollback.
+
 
 ### Added
 

@@ -15,14 +15,24 @@ export interface FrmProductionAdapterOptions {
 const rawProductionSchema = z.object({
   Name: z.string().min(1),
   ClassName: z.string().min(1),
-  ProdPercent: z.number().finite(),
-  ConsPercent: z.number().finite(),
-  CurrentProd: z.number().finite(),
-  MaxProd: z.number().finite(),
-  CurrentConsumed: z.number().finite(),
-  MaxConsumed: z.number().finite(),
-  Type: z.enum(["Solid", "Liquid", "Gas", "Unknown"]),
+  // FRM 1.5.3 includes this display-only field; it is intentionally not
+  // parsed into the public model because the numeric fields are authoritative.
+  ProdPerMin: z.string().min(1).max(256).optional(),
+  ProdPercent: z.number().finite().min(0).max(100),
+  ConsPercent: z.number().finite().min(0).max(100),
+  CurrentProd: z.number().finite().nonnegative(),
+  MaxProd: z.number().finite().nonnegative(),
+  CurrentConsumed: z.number().finite().nonnegative(),
+  MaxConsumed: z.number().finite().nonnegative(),
+  Type: z.string().min(1).max(64),
 }).strict();
+
+function normalizeProductionForm(value: string): ProductionForm {
+  if (value === "Solid" || value === "Liquid" || value === "Gas" || value === "Unknown") {
+    return value;
+  }
+  return "Unknown";
+}
 
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -66,7 +76,7 @@ export class FrmProductionAdapter implements ProductionProvider {
       const records = parseUpstream(z.array(rawProductionSchema).max(100), raw);
       const normalized: ProductionRecord[] = records.map((record) => ({
         name: record.Name,
-        form: record.Type as ProductionForm,
+        form: normalizeProductionForm(record.Type),
         productionPerMinute: record.CurrentProd,
         consumptionPerMinute: record.CurrentConsumed,
         maxProductionPerMinute: record.MaxProd,
