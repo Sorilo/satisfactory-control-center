@@ -15,12 +15,12 @@ export interface FrmProductionAdapterOptions {
 const rawProductionSchema = z.object({
   Name: z.string().min(1),
   ClassName: z.string().min(1),
-  ProdPercent: z.number().finite().min(0).max(100),
-  ConsPercent: z.number().finite().min(0).max(100),
-  CurrentProd: z.number().finite().nonnegative(),
-  MaxProd: z.number().finite().nonnegative(),
-  CurrentConsumed: z.number().finite().nonnegative(),
-  MaxConsumed: z.number().finite().nonnegative(),
+  ProdPercent: z.number().finite(),
+  ConsPercent: z.number().finite(),
+  CurrentProd: z.number().finite(),
+  MaxProd: z.number().finite(),
+  CurrentConsumed: z.number().finite(),
+  MaxConsumed: z.number().finite(),
   Type: z.enum(["Solid", "Liquid", "Gas", "Unknown"]),
 }).strict();
 

@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Production retry and schema boundaries now retain bounded internal metadata for diagnosis while preserving the existing public current-only contract.
+- Production retry and schema boundaries now retain bounded internal metadata for diagnosis while preserving existing adapter/schema semantics and the public current-only contract.
 - RC.7 deployment metadata and Unraid guidance point to the new candidate; RC.6 remains the rollback candidate.
 
 ### Boundaries

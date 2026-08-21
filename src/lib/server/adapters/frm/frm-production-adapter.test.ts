@@ -38,7 +38,7 @@ describe("FRM production adapter", () => {
   });
 
   it("fails closed for malformed production values and retains a safe schema path", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify([{ ...payload[0], CurrentProd: -1 }]), { status: 200 }));
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([{ ...payload[0], CurrentProd: "unexpected" }]), { status: 200 }));
     const provider = new FrmProductionAdapter({ baseUrl: "http://frm:8080", fetcher });
     const error = await provider.getProduction().catch((caught: unknown) => caught);
 
@@ -49,7 +49,7 @@ describe("FRM production adapter", () => {
       attempts: 1,
       retryResult: "not-retryable",
     });
-    expect(JSON.stringify(error)).not.toMatch(/private|8080|ClassName|CurrentProd.*-1/i);
+    expect(JSON.stringify(error)).not.toMatch(/private|8080|ClassName|unexpected/i);
   });
 
   it("records a bounded retry result for a final transport failure", async () => {
