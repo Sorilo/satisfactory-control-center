@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { SectionStatus } from "@/features/sections/section-status";
 import { PowerPage } from "@/features/power/power-page";
+import { ProductionPage } from "@/features/production/production-page";
 import { PowerDashboardLoading } from "@/features/power/power-dashboard";
 import { parseRuntimeConfig, resolvePublicServer } from "@/lib/server/config/runtime-config";
 
@@ -26,6 +27,9 @@ export default async function PlannedSectionPage({ params, searchParams }: { par
   if (!(section in SECTIONS)) notFound();
   if (section === "power") {
     return <Suspense fallback={<PowerDashboardLoading />}><PowerPage searchParams={searchParams} /></Suspense>;
+  }
+  if (section === "production") {
+    return <ProductionPage searchParams={searchParams} />;
   }
   const [title, description] = SECTIONS[section as Section];
   let serverName = "Server configuration unavailable";

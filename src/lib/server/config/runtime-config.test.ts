@@ -168,4 +168,23 @@ describe("runtime configuration", () => {
       })
     ).toThrow(/array/i);
   });
+
+  it("defaults player privacy to disabled and accepts only strict booleans", () => {
+    const defaults = parseRuntimeConfig({ DATA_MODE: "mock" });
+    expect(defaults.publicShowPlayerPositions).toBe(false);
+    expect(defaults.publicShowPlayerInventory).toBe(false);
+
+    const enabled = parseRuntimeConfig({
+      DATA_MODE: "mock",
+      PUBLIC_SHOW_PLAYER_POSITIONS: "true",
+      PUBLIC_SHOW_PLAYER_INVENTORY: "true",
+    });
+    expect(enabled.publicShowPlayerPositions).toBe(true);
+    expect(enabled.publicShowPlayerInventory).toBe(true);
+
+    for (const value of ["TRUE", "yes", "1", "false "]) {
+      expect(() => parseRuntimeConfig({ DATA_MODE: "mock", PUBLIC_SHOW_PLAYER_POSITIONS: value })).toThrow(/PUBLIC_SHOW_PLAYER_POSITIONS/);
+      expect(() => parseRuntimeConfig({ DATA_MODE: "mock", PUBLIC_SHOW_PLAYER_INVENTORY: value })).toThrow(/PUBLIC_SHOW_PLAYER_INVENTORY/);
+    }
+  });
 });

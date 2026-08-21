@@ -9,13 +9,19 @@ type PublicEnvelope<T> = {
   apiVersion: "v1";
   generatedAt: string;
   serverId: string;
-  freshness: { state: "live" | "stale" | "unavailable"; observedAt: string | null };
+  freshness: { state: "live" | "stale" | "empty" | "unavailable" | "unsupported"; observedAt: string | null };
   data: T | null;
   unavailableSources: Array<"frm" | "prometheus" | "postgres">;
 };
 ```
 
 Internal exception messages, URLs, query text, and container names are never fields.
+
+## Source and capability state
+
+Every later domain must distinguish source state from data shape. `live` means a verified successful read; `stale` means bounded last-known-good data with an observation time; `empty` means a successful response with no matching objects or series; `unavailable` means timeout, transport failure, or parse failure; `unsupported` means the selected source does not provide the requested concept/resolution or a privacy/license gate intentionally excludes it; `calculated` is provenance for a value derived from observed normalized inputs. A successful empty upstream array is never an unavailable source.
+
+Historical routes must document their source cadence, retention horizon, allowed resolutions, maximum series, maximum points per series, and partial/empty/unsupported behavior. The pinned monitoring source currently declares a 15-second scrape interval; a 5-second request is valid only after the selected deployment proves a 5-second cadence.
 
 ## Current Slice 1 routes
 
@@ -41,9 +47,14 @@ History exposes only `capacityMw`, `consumptionMw`, and `correctedMaximumConsump
 
 All nested objects are strict. Public serialization rejects private URLs, selectors, raw FRM names, PromQL, datasource identifiers, SQL, hosts, credentials, and stack/error details. History is bounded to 100 series and 2,000 points per series; major consumers are bounded to 10.
 
-## Planned routes
+## Slice 3 production contract
 
-`/production`, `/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and non-power streams are implemented only with their vertical slice. No catch-all upstream route will be added.
+`GET /api/v1/production` accepts only opaque `serverId`, bounded `search` (maximum 80 characters), normalized `itemKey`, and `limit` (1–100). Unknown or duplicate query parameters return a sanitized 400. The route reads the verified FRM `getProdStats` current endpoint through a server-only adapter, and returns normalized item records with current production, consumption, maximums, efficiency percentages, calculated `netPerMinute`, and per-value provenance. Upstream class names and URLs never cross the public boundary.
+
+Production history is deliberately explicit and non-fabricated: successful current responses include `history: {state:"unsupported",reason:"production-history-not-observed"}`. A valid no-match selection is `freshness.state:"live"` with `items:[]`; timeout, transport, or schema failure is `freshness.state:"unavailable"`, `data:null`, and `unavailableSources:["frm"]`. No production PostgreSQL, Prometheus, Grafana, or retained-series capability is implied.
+
+
+`/bottlenecks`, `/factories`, `/storage`, `/trains`, `/drones`, `/players`, `/history`, `/progress`, `/map/*`, and non-power streams are implemented only with their vertical slice. No catch-all upstream route will be added.
 
 ## Error shape
 

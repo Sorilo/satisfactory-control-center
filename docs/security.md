@@ -14,6 +14,9 @@ Public input is untrusted. Upstream services and credentials are server-only. Th
 - Player position and inventory are omitted from the public overview contract and discarded by the adapter allowlist.
 - Power detail adapters validate fixed `/getGenerators` and `/getPowerUsage` subsets, then discard raw object IDs, class names, coordinates/orientation, inventory class identifiers, and unresolved production/demand fields. Public details contain only bounded operational fields; `-1` circuit membership remains an explicit disconnected state.
 - Application code does not log runtime configuration, request headers, upstream bodies, or secrets. A centralized structured logger/redactor is Planned.
+- Source-capability evidence is sanitized before committing: private URLs, hostnames, session/save names, player/station/driver names, raw object identifiers, labels, tokens, passwords, SQL, PromQL, and connection strings are omitted or replaced with `[REDACTED]`.
+- Upstream source inspection does not authorize copying FRM/game map bundles, fonts, icons, or assets; the original-map implementation remains the only permitted map path without additional license evidence.
+- Live deployment checks use the authorized `unraid-phase10` path only. If that path is unreachable, the result is a recorded blocker rather than a direct-root or guessed-host fallback.
 
 ## Threats and mitigations
 

@@ -1,6 +1,8 @@
 # Data sources
 
-This document is the source-grounded compatibility ledger for the Control Center. Source references are pinned to the revisions inspected on 2026-08-18; a moving branch name is never sufficient implementation evidence.
+This document is the source-grounded compatibility ledger for the Control Center. Source references are pinned to immutable revisions; a moving branch name is never sufficient implementation evidence.
+
+The Phase 0 follow-up checkpoint, synthetic capability fixtures, and deployment-validation result are maintained in [`fixtures/source-capability/`](fixtures/source-capability/) and [ADR-006](adr/006-source-capability-gates.md). The 2026-08-21 checkpoint does not replace older live evidence; it labels source evidence, historical deployment evidence, and current validation blockers separately.
 
 ## Evidence ledger
 
@@ -105,7 +107,12 @@ Slice 2 uses a strict subset for a bounded major-consumer ranking. It sorts by `
 
 The generator endpoint includes current capacity/load/fuel information and nested `PowerInfo`. Current source fields include `BaseProd`, `DynamicProdCapacity`, `DynamicProdDemandFactor`, `RegulatedDemandProd`, `IsFullSpeed`, `CanStart`, `LoadPercentage`, `ProdPowerConsumption`, `CurrentPotential`, `ProductionCapacity`, `DefaultProductionCapacity`, `PowerProductionPotential`, shard/sloop counts, fuel/waste inventory, fuel-resource classification, geothermal min/max, and `PowerInfo` ([generator mapping](https://github.com/porisius/FicsitRemoteMonitoring/blob/32fe64e0c22389a944c27222ef6c881f5e207072/Source/FicsitRemoteMonitoring/Private/Endpoints/Factory/Power.cpp#L221-L370)). Slice 2 validates the reviewed field shape and publishes at most 100 records containing only display name, explicit circuit state, normalized fuel/inventory, capacity/load, start readiness, and fuse status. It deliberately does not interpret `PowerProduction`, `RegulatedDemandProd`, or dynamic-demand fields as actual current generation. Raw generator IDs, classes, coordinates/orientation, and inventory class identifiers are discarded; no location is public until the original normalized map contract exists.
 
-## Companion metrics contract
+## FRM production capability
+
+The pinned FRM revision exposes `GET /getProdStats`, returning current per-item records with `Name`, `ClassName`, `ProdPercent`, `ConsPercent`, `CurrentProd`, `MaxProd`, `CurrentConsumed`, `MaxConsumed`, and `Type` ([endpoint implementation](https://github.com/porisius/FicsitRemoteMonitoring/blob/32fe64e0c22389a944c27222ef6c881f5e207072/Source/FicsitRemoteMonitoring/Private/Endpoints/World/Session.cpp#L208-L236)). The production Slice 3 adapter validates these fields, discards the upstream class identity, normalizes item keys, and exposes current production, consumption, maximums, efficiency percentages, and calculated net balance only.
+
+The pinned Companion revision registers production collectors and documents `items_produced_per_min` / `items_consumed_per_min` gauges. This proves current production capability at the source level, not that the selected deployment has a compatible metric set or retained production history. Slice 3 therefore returns a current-only production view and marks history `{state:"unsupported",reason:"production-history-not-observed"}`. No PostgreSQL, Prometheus production series, or Grafana production history is claimed.
+
 
 Companion exposes `/metrics` on port 9000 and creates fixed collectors for power, production, vehicles/logistics, and power-consuming building categories ([`exporter.go`](https://github.com/featheredtoast/FicsitRemoteMonitoringCompanion/blob/725dc8cba4ae16cf533591f252cc15a85370e0c5/Companion/exporter/exporter.go#L18-L46)). Its collector loop runs every five seconds ([`collector_runner.go`](https://github.com/featheredtoast/FicsitRemoteMonitoringCompanion/blob/725dc8cba4ae16cf533591f252cc15a85370e0c5/Companion/exporter/collector_runner.go#L65-L73)). Every metric is a gauge and receives private `url` and `session_name` labels in addition to the declared labels ([`registration.go`](https://github.com/featheredtoast/FicsitRemoteMonitoringCompanion/blob/725dc8cba4ae16cf533591f252cc15a85370e0c5/Companion/exporter/registration.go#L16-L30)). `session_name` is sanitized by removing non-word/non-space characters and changes invalidate old in-process metric labels.
 
@@ -159,7 +166,7 @@ These are useful for a bounded category breakdown and corrected maximum consumpt
 
 ## Prometheus, Grafana, and alerts
 
-The monitoring repository must configure a global 5-second scrape interval for the RC.4 source-fidelity contract and 10-second rule evaluation, load `rules/*.yml`, discover `frmcompanion:9000`, and drop `job` and `instance` labels ([Prometheus config](https://github.com/featheredtoast/satisfactory-monitoring/blob/30cd8668117c17e7953b820edc1f1283a13bb0f1/prometheus/prometheus.yml), [target](https://github.com/featheredtoast/satisfactory-monitoring/blob/30cd8668117c17e7953b820edc1f1283a13bb0f1/prometheus/nodes/node-exporter.yml)). Companion polls every five seconds, matching the intended Prometheus persistence cadence. If the external operator deployment remains at 15 seconds, the application must retain `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=15` and reject 5-second history requests as source-fidelity unsupported.
+The pinned monitoring revision declares a global 15-second scrape interval and 10-second rule evaluation, loads `rules/*.yml`, discovers `frmcompanion:9000`, and drops `job` and `instance` labels ([Prometheus config](https://github.com/featheredtoast/satisfactory-monitoring/blob/30cd8668117c17e7953b820edc1f1283a13bb0f1/prometheus/prometheus.yml), [target](https://github.com/featheredtoast/satisfactory-monitoring/blob/30cd8668117c17e7953b820edc1f1283a13bb0f1/prometheus/nodes/node-exporter.yml)). Companion polls every five seconds, but the application’s safe default follows the pinned Prometheus configuration. If an external operator deployment proves a different cadence, the application must retain the configured interval and reject finer-grained history requests as source-fidelity unsupported.
 
 The deployed runtime reports `storage.tsdb.retention.time = 15d` and `storage.tsdb.retention.size = 0B`. Time retention is therefore the active limit. Slice 2 advertises a maximum 15-day request range, reports partial/empty coverage distinctly when fewer points exist, and rejects ranges beyond the configured horizon rather than implying complete 30-day history.
 
@@ -240,6 +247,19 @@ The Control Center never runs frmcache migrations, writes this database, or reli
 13. **Grafana queries are evidence, not a public API:** dashboard PromQL/SQL is not copied into request parameters or returned to clients. Application query templates are independently named, reviewed, tested, and bounded.
 14. **No database power fallback:** frmcache has no power rows and only one-hour history for selected non-power entities. PostgreSQL failure must not affect FRM realtime or Prometheus history.
 15. **License boundary:** source inspection and citation do not grant permission to copy upstream code/assets. The Control Center implements original adapters and queries over documented normalized concepts.
+
+## Phase 0 source-capability checkpoint
+
+The immutable source trees were fetched and verified at the revisions listed above on 2026-08-21. The checkpoint adds evidence for the next slices without claiming live availability:
+
+- FRM source files expose read-only current-state concepts for production summaries, factory detail, storage inventories, players, map markers/coordinates, trains/rail/stations, wheeled vehicles/stations, drones/stations, and session state. These are source capabilities, not public fields; each later adapter needs an allowlist, privacy decision, bounded cardinality, and explicit empty/unavailable behavior.
+- Companion source registers item production/consumption, machine-production, vehicle, train, and drone metric collectors. It does not register a `power_production` gauge, so generation history remains unsupported. Metric presence must still be discovered for the selected deployment.
+- The pinned monitoring Prometheus configuration declares `scrape_interval: 15s` and `evaluation_interval: 10s`; this is immutable source evidence, not the selected live deployment setting. The operator-validated Unraid Power profile separately uses `scrape_interval: 5s` with Control Center `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`. The application must not promise finer history outside a separately verified deployment.
+- The pinned frmcache schema contains current and historical JSONB cache tables, but the Control Center does not write or migrate that database and does not assume it contains power history.
+- The authorized `unraid-phase10` live-validation alias was not resolvable from this workspace at the 2026-08-21 Phase 0 checkpoint; no direct-root or guessed-host fallback was used. The later operator-validated Power profile is documented in [`deployment-unraid.md`](deployment-unraid.md). Current Production still requires live candidate validation before it can be described as deployed.
+- The inspected FRM repository has no top-level license file. The Control Center will not copy FRM web-map bundles, game assets, fonts, icons, or source code.
+
+The canonical capability matrix and sanitized deployment result are in [`fixtures/source-capability/`](fixtures/source-capability/). Any discrepancy between this source checkpoint and a later live deployment must stop the affected slice until the evidence is refreshed.
 
 ## Mock provider
 

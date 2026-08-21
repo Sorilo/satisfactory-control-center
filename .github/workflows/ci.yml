@@ -71,7 +71,7 @@ jobs:
           docker build --pull \
             --build-arg APP_VERSION="$(node -p "require('./package.json').version")" \
             --tag satisfactory-control-center:ci .
-      - name: Smoke-test hardened runtime and Slice 1–2 contracts
+      - name: Smoke-test hardened runtime and Slice 1–3 contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -141,11 +141,21 @@ jobs:
             .freshness.history.state == "live" and
             (.data.history.series | length) > 0
           ' /tmp/power.json
+
+          curl --fail --silent 'http://127.0.0.1:3000/api/v1/production?serverId=main&search=iron' > /tmp/production.json
+          jq -e '
+            .apiVersion == "v1" and
+            .serverId == "main" and
+            .freshness.state == "live" and
+            .data.items[0].itemKey == "iron-rod" and
+            .data.history == {"state":"unsupported","reason":"production-history-not-observed"}
+          ' /tmp/production.json
+
           if curl --fail --silent 'http://127.0.0.1:3000/api/v1/power/stream?serverId=main' > /tmp/stream.txt; then
             echo "power stream must remain disabled by default" >&2
             exit 1
           fi
-          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|PROMETHEUS_SERVERS_JSON|urlLabel|sessionLabel|ClassName|PowerProduction|RegulatedDemandProd|DynamicProd|fixture-|"location"|https?://' /tmp/servers.json /tmp/overview.json /tmp/power.json; then
+          if grep -Eqi 'frmBaseUrl|FRM_TOKEN|SERVERS_JSON|PROMETHEUS_SERVERS_JSON|urlLabel|sessionLabel|ClassName|PowerProduction|RegulatedDemandProd|DynamicProd|items_produced_per_min|items_consumed_per_min|fixture-|"location"|https?://' /tmp/servers.json /tmp/overview.json /tmp/power.json /tmp/production.json; then
             echo "public API leaked an internal configuration field" >&2
             exit 1
           fi

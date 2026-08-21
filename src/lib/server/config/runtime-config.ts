@@ -30,6 +30,8 @@ export interface RuntimeConfig {
   prometheusServers: PrometheusServerConfig[];
   trustProxyHeaders: boolean;
   powerStreamEnabled: boolean;
+  publicShowPlayerPositions: boolean;
+  publicShowPlayerInventory: boolean;
   prometheusScrapeIntervalSeconds: number;
 }
 
@@ -85,6 +87,14 @@ function parsePrometheusScrapeInterval(raw: string | undefined): number {
     throw new ConfigError("PROMETHEUS_SCRAPE_INTERVAL_SECONDS must be 5 or 15");
   }
   return seconds;
+}
+
+function parseStrictBoolean(raw: string | undefined, name: string, fallback: boolean): boolean {
+  const value = raw ?? String(fallback);
+  if (value !== "true" && value !== "false") {
+    throw new ConfigError(`${name} must be 'true' or 'false'`);
+  }
+  return value === "true";
 }
 
 function parsePrometheusServersJson(raw: string | undefined): PrometheusServerConfig[] {
@@ -181,6 +191,16 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
   if (powerStreamEnabledRaw !== "true" && powerStreamEnabledRaw !== "false") {
     throw new ConfigError("POWER_STREAM_ENABLED must be 'true' or 'false'");
   }
+  const publicShowPlayerPositions = parseStrictBoolean(
+    env.PUBLIC_SHOW_PLAYER_POSITIONS,
+    "PUBLIC_SHOW_PLAYER_POSITIONS",
+    false
+  );
+  const publicShowPlayerInventory = parseStrictBoolean(
+    env.PUBLIC_SHOW_PLAYER_INVENTORY,
+    "PUBLIC_SHOW_PLAYER_INVENTORY",
+    false
+  );
   const defaultServerId = env.DEFAULT_SERVER_ID ?? "main";
   if (!opaqueIdSchema.safeParse(defaultServerId).success) {
     throw new ConfigError("DEFAULT_SERVER_ID must be a bounded opaque identifier");
@@ -220,6 +240,8 @@ export function parseRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
     prometheusServers: parsePrometheusServersJson(env.PROMETHEUS_SERVERS_JSON),
     trustProxyHeaders: trustProxyHeadersRaw === "true",
     powerStreamEnabled: powerStreamEnabledRaw === "true",
+    publicShowPlayerPositions,
+    publicShowPlayerInventory,
     prometheusScrapeIntervalSeconds: parsePrometheusScrapeInterval(
       env.PROMETHEUS_SCRAPE_INTERVAL_SECONDS
     ),

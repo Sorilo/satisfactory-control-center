@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceStateSchema } from "./common-contracts";
 
 const finiteNonnegative = z.number().finite().nonnegative();
 const observedAtSchema = z.string().min(1);
@@ -48,7 +49,7 @@ export const powerQuerySchema = z
 
 const freshnessSchema = z
   .object({
-    state: z.enum(["live", "stale", "unavailable"]),
+    state: sourceStateSchema,
     observedAt: z.union([observedAtSchema, z.null()]),
   })
   .strict();

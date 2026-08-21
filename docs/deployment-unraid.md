@@ -1,18 +1,19 @@
-# Deploy v0.2.0-rc.5 on Unraid
+# Deploy v0.2.0-rc.6 on Unraid
 
-## Slice 2 release-candidate boundary
+## Slice 3 production-candidate boundary
 
-`v0.2.0-rc.5` is the current Slice 2 release candidate. It retains the RC.2 runtime boundary and adds the verified browser EventSource-to-DOM correction, source-aware 5-second history contracts gated by the configured Prometheus cadence, bounded retained-history refresh, independent range/resolution controls, custom-range validation, and explicit retention/resolution/source-fidelity unsupported states. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. It still does **not** include PostgreSQL history, persistence, the full map/location contract, viewport zoom, or a 15m/1s live trace. Those remain outside this RC in [`requirements-matrix.md`](requirements-matrix.md).
+`v0.2.0-rc.6` is the current Slice 3 release candidate. It retains the RC.5 Power runtime and source-aware history cache correction, and adds the bounded current-only Production view backed by normalized FRM `getProdStats` data. Production history remains explicitly unsupported until selected-deployment retention evidence exists; no PostgreSQL, Prometheus production history, Grafana, or Map work is included. `POWER_STREAM_ENABLED` remains opt-in and disabled by default. The operator-validated Power profile uses a 5-second Prometheus cadence; the repository-safe application default remains 15 seconds outside that profile.
 
 Published images after the tag release gate succeeds:
 
 - `ghcr.io/sorilo/satisfactory-control-center:latest` — current default branch.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` — current Slice 2 release candidate.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6` — current Slice 3 release candidate.
 - `ghcr.io/sorilo/satisfactory-control-center:<full-git-sha>` — exact source revision and preferred RC validation pin.
-- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.1` — prior Slice 2 rollback release.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` — prior validated Power rollback release.
+- `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.4` — earlier Slice 2 rollback release.
 - `ghcr.io/sorilo/satisfactory-control-center:v0.1.0` — prior Slice 1 rollback release.
 
-Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.4` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
+Pin the full release-candidate Git SHA for validation, or `v0.2.0-rc.6` when a human-readable prerelease pin is required. The image runs as UID/GID `10001` (`app`), has no development dependencies, contains no runtime credentials, and accepts integration configuration only through runtime environment variables.
 
 ## Authenticate and pull
 
@@ -20,8 +21,8 @@ The repository/package is private by default. Create a GitHub token with only `r
 
 ```bash
 echo "$GHCR_READ_TOKEN" | docker login ghcr.io --username Sorilo --password-stdin
-docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5
-docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5 \
+docker pull ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6
+docker image inspect ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6 \
   --format '{{.Config.User}} {{json .Config.Healthcheck.Test}}'
 ```
 
@@ -46,7 +47,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 
 | Variable | Required/default | Purpose |
 |---|---|---|
-| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
+| `CONTROL_CENTER_IMAGE` | Defaults to `ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.6` | Immutable image reference; the release-candidate full Git SHA is preferred for validation. |
 | `CONTROL_CENTER_BIND` | `127.0.0.1` | Host bind address. Change only when the LAN/reverse-proxy design requires it. |
 | `CONTROL_CENTER_PORT` | `3000` | Host-side application port. |
 | `GAME_NETWORK` | `sorilonet` placeholder | Existing external network shared with Satisfactory/FRM; inspect and replace if different. |
@@ -57,7 +58,7 @@ Copy `.env.example` to an Unraid-managed path outside the repository and image.
 | `FRM_TOKEN` | Optional | Server-only FRM read token; never place it in the image or repository. |
 | `SERVERS_JSON` | Optional alternative to single-server fields | Multi-server registry with unique opaque IDs and server-only URLs/tokens. |
 | `PROMETHEUS_SERVERS_JSON` | Optional; defaults to no history source | Separate strict array of `{serverId,baseUrl,urlLabel,sessionLabel}` mappings. Each `serverId` must already exist in the FRM registry. Values remain server-only. |
-| `PROMETHEUS_SCRAPE_INTERVAL_SECONDS` | `15` | Validated source cadence for retained Power history. Keep `15` for RC.3-compatible rollback; set `5` only after the operator Prometheus deployment is configured and verified at a 5-second global scrape interval. |
+| `PROMETHEUS_SCRAPE_INTERVAL_SECONDS` | `15` repository-safe default; `5` in the validated Unraid Power profile | Source cadence used for retained Power history. Do not set `5` unless the selected Prometheus deployment is configured and verified at a 5-second global scrape interval. |
 | `TRUST_PROXY_HEADERS` | `false` | Enable only behind a trusted proxy that overwrites forwarded-client headers. |
 | `POWER_STREAM_ENABLED` | `false` | Enables the bounded power SSE route, including the additive `power-details` channel. Keep false until buffering and disconnect cleanup pass through the actual proxy/Tunnel path. |
 
@@ -65,7 +66,15 @@ For live mode, provide either one `FRM_BASE_URL` plus optional `FRM_TOKEN`, or `
 
 Prometheus history is independently optional. `PROMETHEUS_SERVERS_JSON` does not alter `SERVERS_JSON`; unknown or duplicate server references, unknown keys, non-HTTP(S) URLs, and embedded URL credentials fail configuration validation. The configured `baseUrl` must be reachable through a network attached by the site-specific deployment. Do not expose Prometheus publicly merely to satisfy this connection.
 
-For RC.5 5-second history, the external monitoring deployment must set the global Prometheus `scrape_interval: 5s` in its authorized `prometheus/prometheus.yml` and must not override the power/Companion job with a coarser interval. Keep `evaluation_interval: 10s`, `storage.tsdb.retention.time=15d`, and `storage.tsdb.retention.size=0B` unchanged. Only after `promtool check config`, target health, and successive power samples confirm the 5-second cadence should the Control Center environment set `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`. If the operator deployment remains at 15s, leave the application value at `15`; requested `5s` history will be returned as structured unsupported coverage without an upstream query.
+The operator-validated Unraid Power deployment uses the following monitoring profile:
+
+```yaml
+global:
+  scrape_interval: 5s
+  evaluation_interval: 10s
+```
+
+The matching Control Center environment sets `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5`. Retention remains `storage.tsdb.retention.time=15d` with `storage.tsdb.retention.size=0B`, and the application retains the existing 2,000-point-per-series bound. This 5-second setting is deployment-specific evidence and must not be generalized to an unverified Prometheus deployment; the repository-safe default remains `15` for mock mode and rollback. If another operator deployment remains at 15s, leave the application value at `15`; a requested 5s history resolution must return structured unsupported coverage without issuing an upstream query.
 
 ## Start in mock mode
 
@@ -98,6 +107,14 @@ curl --fail --silent 'http://127.0.0.1:3000/api/v1/power?serverId=main&range=6h&
     (.data.current.majorConsumers.state == "live") and
     (.data.current.majorConsumers.items | length <= 10) and
     ([.. | objects | keys[]] | any(. == "location" or . == "ClassName" or . == "PowerProduction") | not)
+  '
+
+curl --fail --silent 'http://127.0.0.1:3000/api/v1/production?serverId=main' | \
+  jq -e '
+    .apiVersion == "v1" and .serverId == "main" and
+    .data.history.state == "unsupported" and
+    .data.history.reason == "production-history-not-observed" and
+    ([.. | objects | keys[]] | any(. == "ClassName" or . == "items_produced_per_min" or . == "http" or . == "location") | not)
   '
 ```
 
@@ -146,6 +163,6 @@ Never paste environment dumps, tokens, or raw credentials into support channels.
 
 ## Rollback
 
-Keep the previous known-good image tag and external environment file. To roll back RC.3, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.2`, set `POWER_STREAM_ENABLED=false`, and recreate only Control Center. Slice 2 owns no database migration or persistent application volume.
+Keep the previous known-good image tag and external environment file. To roll back RC.6, set `CONTROL_CENTER_IMAGE=ghcr.io/sorilo/satisfactory-control-center:v0.2.0-rc.5`, retain `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5` for the validated Power profile, set `POWER_STREAM_ENABLED=false`, and recreate only Control Center. The RC.5 rollback removes the current-only Production view but requires no application data migration or persistent volume.
 
 For a current-only rollback, remove `PROMETHEUS_SERVERS_JSON` (and any site-specific monitoring-network override) while retaining the unchanged FRM `SERVERS_JSON`. No data migration or application volume is involved.

@@ -10,6 +10,7 @@ describe("GET /api/v1/overview", () => {
     const response = await GET(new Request("http://app/api/v1/overview?serverId=main"));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
     const body = await response.json();
     expect(body.apiVersion).toBe("v1");
     expect(body.serverId).toBe("main");

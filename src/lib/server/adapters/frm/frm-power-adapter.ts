@@ -20,6 +20,7 @@ import {
   requestBoundedJson,
   type Fetcher,
 } from "@/lib/server/http/bounded-json";
+import { withBoundedRetry } from "@/lib/server/reliability/upstream-policy";
 
 const powerCircuitSchema = z.object({
   CircuitGroupID: z.number().int().nonnegative(),
@@ -156,13 +157,13 @@ export class FrmPowerAdapter implements PowerProvider {
   private async request(path: "getPower" | "getGenerators" | "getPowerUsage"): Promise<unknown> {
     const headers: Record<string, string> = {};
     if (this.token !== null) headers["X-FRM-Authorization"] = this.token;
-    return requestBoundedJson({
+    return withBoundedRetry(() => requestBoundedJson({
       url: `${this.baseUrl}/${path}`,
       headers,
       fetcher: this.fetcher,
       maxResponseBytes: this.maxResponseBytes,
       timeoutMs: this.timeoutMs,
-    });
+    }));
   }
 }
 

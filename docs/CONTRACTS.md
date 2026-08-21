@@ -14,7 +14,9 @@ Upstream payloads are `unknown` until parsed by strict runtime schemas. Adapters
 2. **Upstream adapters:** read-only network clients with timeout and size bounds.
 3. **In-process cache/aggregator:** disposable, bounded, and non-authoritative.
 4. **Browser state:** selected public server ID, filters, and presentation state only.
-5. **Application persistence:** none in Slice 1; future timeline persistence requires a separate schema/datastore ADR.
+5. **Application persistence:** none in Slice 1 or Slice 3; future timeline persistence requires a separate schema/datastore ADR.
+
+Current production is intentionally a read-through FRM snapshot: calculated net throughput is labeled calculated, and absent retained history is labeled unsupported rather than synthesized.
 
 ## Failure contract
 

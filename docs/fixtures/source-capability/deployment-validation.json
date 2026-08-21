@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-08-21",
+  "authorizedPath": "unraid-phase10",
+  "status": "blocked",
+  "reason": "The configured alias hostname was not DNS-resolvable from the workspace.",
+  "directPrivilegedFallbackAttempted": false,
+  "liveContainerInspection": "not-performed",
+  "imageDigests": "not-collected",
+  "rawOutputRetained": false,
+  "secretsRetained": false,
+  "nextGate": "Retry only through the authorized alias after workspace network/DNS reachability is restored."
+}
