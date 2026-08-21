@@ -13,15 +13,64 @@ export type UpstreamErrorCode =
   | "UPSTREAM_RESPONSE_TOO_LARGE"
   | "UPSTREAM_SCHEMA_INVALID";
 
+export type RetryResult =
+  | "not-retried"
+  | "not-retryable"
+  | "failed-after-retry"
+  | "succeeded-after-retry"
+  | "unknown";
+
+export interface UpstreamErrorDetails {
+  schemaPath?: string;
+  attempts?: number;
+  retryResult?: RetryResult;
+}
+
 /** Public-safe error with no upstream URL, payload, status, or credentials. */
 export class UpstreamError extends Error {
   readonly code: UpstreamErrorCode;
+  readonly schemaPath?: string;
+  readonly attempts?: number;
+  readonly retryResult?: RetryResult;
 
-  constructor(code: UpstreamErrorCode) {
+  constructor(code: UpstreamErrorCode, details: UpstreamErrorDetails = {}) {
     super(code);
     this.name = "UpstreamError";
     this.code = code;
+    this.schemaPath = details.schemaPath === undefined
+      ? undefined
+      : sanitizeSchemaPathText(details.schemaPath);
+    this.attempts = normalizeAttempts(details.attempts);
+    this.retryResult = details.retryResult;
   }
+}
+
+function normalizeAttempts(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.max(1, Math.min(2, Math.floor(value)));
+}
+
+const SAFE_PATH_SEGMENT = /^(?:[A-Za-z][A-Za-z0-9_]{0,63}|\[\d{1,4}\])$/;
+
+/** Keep only bounded schema path structure; never retain upstream field values. */
+export function sanitizeSchemaPath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) return "root";
+  const segments = path.slice(0, 8).map((segment) => {
+    if (typeof segment === "number" && Number.isInteger(segment) && segment >= 0) {
+      return `[${Math.min(segment, 9_999)}]`;
+    }
+    const text = String(segment);
+    return SAFE_PATH_SEGMENT.test(text) ? text : "field";
+  });
+  return segments.reduce((result, segment) => (
+    segment.startsWith("[") ? `${result}${segment}` : result ? `${result}.${segment}` : segment
+  ), "").slice(0, 160) || "root";
+}
+
+const SAFE_SCHEMA_PATH_TEXT = /^(?:response|root|(?:[A-Za-z][A-Za-z0-9_]{0,63}|\[\d{1,4}\])(?:\.(?:[A-Za-z][A-Za-z0-9_]{0,63}|\[\d{1,4}\]))*)$/;
+
+function sanitizeSchemaPathText(value: string): string {
+  return SAFE_SCHEMA_PATH_TEXT.test(value) ? value.slice(0, 160) : "[REDACTED_PATH]";
 }
 
 export interface BoundedJsonRequestOptions {
@@ -147,7 +196,7 @@ export async function requestBoundedJson(
     try {
       return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
     } catch {
-      throw new UpstreamError("UPSTREAM_SCHEMA_INVALID");
+      throw new UpstreamError("UPSTREAM_SCHEMA_INVALID", { schemaPath: "response" });
     }
   } catch (error) {
     if (error instanceof UpstreamError) throw error;
@@ -166,7 +215,9 @@ export async function requestBoundedJson(
 export function parseUpstream<T>(schema: z.ZodType<T>, raw: unknown): T {
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
-    throw new UpstreamError("UPSTREAM_SCHEMA_INVALID");
+    throw new UpstreamError("UPSTREAM_SCHEMA_INVALID", {
+      schemaPath: sanitizeSchemaPath(parsed.error.issues[0]?.path ?? []),
+    });
   }
   return parsed.data;
 }

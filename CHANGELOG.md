@@ -1,3 +1,24 @@
+## [0.2.0-rc.7] - 2026-08-21
+
+### Added
+
+- Sanitized server-side Production upstream diagnostics for transport, timeout, cancellation, response/schema, and normalization failures.
+- Correlatable one-line JSON fields for request ID, FRM source/adapter, failure category, stable upstream code, retry result/attempts, safe schema path, and final unavailable source state.
+- Adapter and service privacy regressions proving that tokens, URLs, private hostnames, raw `ClassName` values, upstream payloads, and diagnostic fields remain outside the public envelope.
+
+### Changed
+
+- Production retry and schema boundaries now retain bounded internal metadata for diagnosis while preserving existing adapter/schema semantics and the public current-only contract.
+- RC.7 deployment metadata and Unraid guidance point to the new candidate; RC.6 remains the rollback candidate.
+
+### Boundaries
+
+- Production history remains explicitly unsupported; no fabricated history or persistence is added.
+- Diagnostic detail is emitted only server-side and is never serialized into the public API.
+- No final `v0.2.0`, GHCR publication, Unraid promotion, or live deployment mutation is included in this source candidate.
+
+See [`docs/releases/v0.2.0-rc.7.md`](docs/releases/v0.2.0-rc.7.md) for the candidate boundary and verification gates.
+
 ## [0.2.0-rc.6] - 2026-08-21
 
 ### Added

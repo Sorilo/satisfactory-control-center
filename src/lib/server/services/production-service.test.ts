@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { UpstreamError } from "@/lib/server/http/bounded-json";
+import { createStructuredLogger } from "@/lib/server/observability/logger";
 import { clearProductionServiceCachesForTests, getCachedProductionEnvelope, getProductionEnvelope } from "./production-service";
 import type { ProductionProvider, ProductionSnapshot } from "@/domain/production";
 
@@ -74,12 +76,81 @@ describe("production service", () => {
     expect(envelope.data).toMatchObject({ items: [], total: 0 });
   });
 
+  it("logs sanitized timeout diagnostics while keeping the public envelope opaque", async () => {
+    const lines: string[] = [];
+    const logger = createStructuredLogger((line) => lines.push(line));
+    const error = new UpstreamError("UPSTREAM_TIMEOUT");
+    Object.assign(error, {
+      attempts: 2,
+      retryResult: "failed-after-retry",
+      schemaPath: "response",
+    });
+
+    const envelope = await getProductionEnvelope(
+      "main",
+      provider(error),
+      { serverId: "main" },
+      undefined,
+      { requestId: "req-production-1", route: "/api/v1/production", logger }
+    );
+
+    expect(envelope).toMatchObject({
+      freshness: { state: "unavailable" },
+      data: null,
+      unavailableSources: ["frm"],
+    });
+    expect(lines).toHaveLength(1);
+    const record = JSON.parse(lines[0]!);
+    expect(record).toMatchObject({
+      level: "error",
+      message: "production upstream failure",
+      requestId: "req-production-1",
+      route: "/api/v1/production",
+      serverId: "main",
+      source: "frm",
+      adapter: "frm-production",
+      code: "UPSTREAM_TIMEOUT",
+      failureCategory: "timeout",
+      retryResult: "failed-after-retry",
+      attempts: 2,
+      schemaPath: "response",
+      state: "unavailable",
+    });
+    expect(JSON.stringify(record)).not.toMatch(/token|private|8080|ClassName|secret/i);
+    expect(JSON.stringify(envelope)).not.toMatch(/failureCategory|retryResult|schemaPath|UPSTREAM_/i);
+  });
+
+  it("classifies schema failures separately and logs only a bounded field path", async () => {
+    const lines: string[] = [];
+    const logger = createStructuredLogger((line) => lines.push(line));
+    const error = new UpstreamError("UPSTREAM_SCHEMA_INVALID", {
+      schemaPath: "[0].CurrentProd",
+      retryResult: "not-retryable",
+    });
+
+    await getProductionEnvelope(
+      "main",
+      provider(error),
+      { serverId: "main" },
+      undefined,
+      { requestId: "req-production-2", route: "/production", logger }
+    );
+
+    const record = JSON.parse(lines[0]!);
+    expect(record).toMatchObject({
+      failureCategory: "schema",
+      retryResult: "not-retryable",
+      schemaPath: "[0].CurrentProd",
+      state: "unavailable",
+    });
+    expect(JSON.stringify(record)).not.toMatch(/ClassName|private|token|secret/i);
+  });
+
   it("returns a sanitized unavailable state without upstream details", async () => {
-    const envelope = await getProductionEnvelope("main", provider(new Error("http://frm:8080 private-value=redacted")), { serverId: "main" });
+    const envelope = await getProductionEnvelope("main", provider(new Error("upstream unavailable [REDACTED]")), { serverId: "main" });
     expect(envelope.freshness.state).toBe("unavailable");
     expect(envelope.data).toBeNull();
     expect(envelope.unavailableSources).toEqual(["frm"]);
-    expect(JSON.stringify(envelope)).not.toContain("frm:8080");
-    expect(JSON.stringify(envelope)).not.toContain("private-value");
+    expect(JSON.stringify(envelope)).not.toContain("[REDACTED]");
   });
 });
