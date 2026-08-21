@@ -1,12 +1,21 @@
+import type { RetryResult } from "@/lib/server/http/bounded-json";
+
 export type StructuredLogLevel = "debug" | "info" | "warn" | "error";
+export type StructuredFailureCategory = "schema" | "transport" | "timeout" | "cancelled";
 
 export interface StructuredLogEvent {
   message: string;
   requestId?: string;
   route?: string;
   serverId?: string;
+  source?: string;
+  adapter?: string;
   code?: string;
   state?: string;
+  failureCategory?: StructuredFailureCategory;
+  retryResult?: RetryResult;
+  attempts?: number;
+  schemaPath?: string;
   durationMs?: number;
 }
 
@@ -31,6 +40,16 @@ export function redactSensitiveText(value: string): string {
     );
 }
 
+const SAFE_SCHEMA_PATH = /^(?:response|root|(?:[A-Za-z][A-Za-z0-9_]{0,63}|\[\d{1,4}\])(?:\.(?:[A-Za-z][A-Za-z0-9_]{0,63}))*)$/;
+
+function safeBoundedText(value: string, maxLength: number): string {
+  return redactSensitiveText(value).slice(0, maxLength);
+}
+
+function safeSchemaPath(value: string): string {
+  return SAFE_SCHEMA_PATH.test(value) ? value.slice(0, 160) : "[REDACTED_PATH]";
+}
+
 function emit(
   sink: (line: string) => void,
   level: StructuredLogLevel,
@@ -43,8 +62,16 @@ function emit(
     ...(event.requestId ? { requestId: redactSensitiveText(event.requestId) } : {}),
     ...(event.route ? { route: redactSensitiveText(event.route).slice(0, 160) } : {}),
     ...(event.serverId ? { serverId: redactSensitiveText(event.serverId).slice(0, 64) } : {}),
-    ...(event.code ? { code: redactSensitiveText(event.code).slice(0, 80) } : {}),
-    ...(event.state ? { state: redactSensitiveText(event.state).slice(0, 40) } : {}),
+    ...(event.source ? { source: safeBoundedText(event.source, 64) } : {}),
+    ...(event.adapter ? { adapter: safeBoundedText(event.adapter, 96) } : {}),
+    ...(event.code ? { code: safeBoundedText(event.code, 80) } : {}),
+    ...(event.state ? { state: safeBoundedText(event.state, 40) } : {}),
+    ...(event.failureCategory ? { failureCategory: event.failureCategory } : {}),
+    ...(event.retryResult ? { retryResult: event.retryResult } : {}),
+    ...(typeof event.attempts === "number" && Number.isInteger(event.attempts)
+      ? { attempts: Math.max(1, Math.min(2, event.attempts)) }
+      : {}),
+    ...(event.schemaPath ? { schemaPath: safeSchemaPath(event.schemaPath) } : {}),
     ...(typeof event.durationMs === "number" && Number.isFinite(event.durationMs)
       ? { durationMs: Math.max(0, Math.round(event.durationMs)) }
       : {}),

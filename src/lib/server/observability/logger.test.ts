@@ -6,7 +6,7 @@ describe("structured logger", () => {
     const lines: string[] = [];
     const logger = createStructuredLogger((line) => lines.push(line));
     logger.warn({
-      message: "upstream request failed http://private:8080/read?token=secret",
+      message: "upstream request failed https://example.invalid/read?query-marker",
       requestId: "request-1",
       route: "/api/v1/overview",
       code: "UPSTREAM_UNAVAILABLE",
@@ -20,7 +20,7 @@ describe("structured logger", () => {
       route: "/api/v1/overview",
       code: "UPSTREAM_UNAVAILABLE",
     });
-    expect(JSON.stringify(record)).not.toMatch(/private|8080|secret|token=/i);
+    expect(JSON.stringify(record)).not.toMatch(/example|invalid|query-marker/i);
   });
 
   it("redacts common secret-bearing text before it reaches the sink", () => {

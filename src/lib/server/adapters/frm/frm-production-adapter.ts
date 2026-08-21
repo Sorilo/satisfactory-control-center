@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ProductionProvider, ProductionSnapshot, ProductionRecord, ProductionForm } from "@/domain/production";
 import { normalizeProductionItems } from "@/domain/production";
-import { parseUpstream, requestBoundedJson, type Fetcher } from "@/lib/server/http/bounded-json";
+import { parseUpstream, requestBoundedJson, UpstreamError, type Fetcher } from "@/lib/server/http/bounded-json";
 import { withBoundedRetry } from "@/lib/server/reliability/upstream-policy";
 
 export interface FrmProductionAdapterOptions {
@@ -15,17 +15,25 @@ export interface FrmProductionAdapterOptions {
 const rawProductionSchema = z.object({
   Name: z.string().min(1),
   ClassName: z.string().min(1),
-  ProdPercent: z.number().finite(),
-  ConsPercent: z.number().finite(),
-  CurrentProd: z.number().finite(),
-  MaxProd: z.number().finite(),
-  CurrentConsumed: z.number().finite(),
-  MaxConsumed: z.number().finite(),
+  ProdPercent: z.number().finite().min(0).max(100),
+  ConsPercent: z.number().finite().min(0).max(100),
+  CurrentProd: z.number().finite().nonnegative(),
+  MaxProd: z.number().finite().nonnegative(),
+  CurrentConsumed: z.number().finite().nonnegative(),
+  MaxConsumed: z.number().finite().nonnegative(),
   Type: z.enum(["Solid", "Liquid", "Gas", "Unknown"]),
 }).strict();
 
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 5000;
+
+function retryResultFor(code: UpstreamError["code"], attempts: number): UpstreamError["retryResult"] {
+  if (attempts > 1) return "failed-after-retry";
+  if (code === "UPSTREAM_UNAVAILABLE" || code === "UPSTREAM_TIMEOUT" || code === "UPSTREAM_HTTP_ERROR") {
+    return "not-retried";
+  }
+  return "not-retryable";
+}
 
 export class FrmProductionAdapter implements ProductionProvider {
   private readonly baseUrl: string;
@@ -43,24 +51,39 @@ export class FrmProductionAdapter implements ProductionProvider {
   }
 
   async getProduction(): Promise<ProductionSnapshot> {
-    const raw = await withBoundedRetry(() => requestBoundedJson({
-      url: `${this.baseUrl}/getProdStats`,
-      headers: this.token === null ? {} : { "X-FRM-Authorization": this.token },
-      fetcher: this.fetcher,
-      maxResponseBytes: this.maxResponseBytes,
-      timeoutMs: this.timeoutMs,
-    }));
-    const records = parseUpstream(z.array(rawProductionSchema).max(100), raw);
-    const normalized: ProductionRecord[] = records.map((record) => ({
-      name: record.Name,
-      form: record.Type as ProductionForm,
-      productionPerMinute: record.CurrentProd,
-      consumptionPerMinute: record.CurrentConsumed,
-      maxProductionPerMinute: record.MaxProd,
-      maxConsumptionPerMinute: record.MaxConsumed,
-      productionEfficiencyPercent: record.ProdPercent,
-      consumptionEfficiencyPercent: record.ConsPercent,
-    }));
-    return { observedAt: new Date().toISOString(), items: normalizeProductionItems(normalized) };
+    let attempts = 0;
+    try {
+      const raw = await withBoundedRetry((attempt) => {
+        attempts = attempt;
+        return requestBoundedJson({
+          url: `${this.baseUrl}/getProdStats`,
+          headers: this.token === null ? {} : { "X-FRM-Authorization": this.token },
+          fetcher: this.fetcher,
+          maxResponseBytes: this.maxResponseBytes,
+          timeoutMs: this.timeoutMs,
+        });
+      });
+      const records = parseUpstream(z.array(rawProductionSchema).max(100), raw);
+      const normalized: ProductionRecord[] = records.map((record) => ({
+        name: record.Name,
+        form: record.Type as ProductionForm,
+        productionPerMinute: record.CurrentProd,
+        consumptionPerMinute: record.CurrentConsumed,
+        maxProductionPerMinute: record.MaxProd,
+        maxConsumptionPerMinute: record.MaxConsumed,
+        productionEfficiencyPercent: record.ProdPercent,
+        consumptionEfficiencyPercent: record.ConsPercent,
+      }));
+      return { observedAt: new Date().toISOString(), items: normalizeProductionItems(normalized) };
+    } catch (error) {
+      if (error instanceof UpstreamError) {
+        throw new UpstreamError(error.code, {
+          schemaPath: error.schemaPath,
+          attempts: attempts || error.attempts,
+          retryResult: retryResultFor(error.code, attempts || error.attempts || 1),
+        });
+      }
+      throw error;
+    }
   }
 }

@@ -3,9 +3,12 @@ import { ProductionDashboard } from "@/features/production/production-dashboard"
 import { createProductionProvider } from "@/lib/server/providers/provider-factory";
 import { getCachedProductionEnvelope } from "@/lib/server/services/production-service";
 import { parseRuntimeConfig, resolvePublicServer, type DataMode } from "@/lib/server/config/runtime-config";
+import { createRequestContext } from "@/lib/server/observability/request-context";
+import { createStructuredLogger } from "@/lib/server/observability/logger";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 type LoadedProduction = { envelope: ProductionEnvelope; dataMode: DataMode; query: ProductionQuery };
+const logger = createStructuredLogger();
 
 export async function ProductionPage({ searchParams }: { searchParams: SearchParams }) {
   let loaded: LoadedProduction | null = null;
@@ -26,7 +29,14 @@ export async function ProductionPage({ searchParams }: { searchParams: SearchPar
       limit: typeof query.limit === "string" ? query.limit : undefined,
     });
     const productionQuery = parsed.success ? parsed.data : { serverId: server.id };
-    const envelope = await getCachedProductionEnvelope(server.id, createProductionProvider(config, server), productionQuery);
+    const requestContext = createRequestContext(new Request("http://localhost/production"), "/production", server.id);
+    const envelope = await getCachedProductionEnvelope(
+      server.id,
+      createProductionProvider(config, server),
+      productionQuery,
+      undefined,
+      { requestId: requestContext.requestId, route: requestContext.route, logger }
+    );
     loaded = { envelope, dataMode: config.dataMode, query: productionQuery };
   } catch {
     loaded = null;

@@ -64,7 +64,9 @@ export async function GET(request: Request) {
   const envelope = await getCachedProductionEnvelope(
     server.id,
     createProductionProvider(config, server),
-    parsedQuery.data
+    parsedQuery.data,
+    undefined,
+    { requestId: context.requestId, route: context.route, logger }
   );
   return withRequestId(NextResponse.json(envelope, { headers: { "Cache-Control": "no-store" } }), context);
 }
