@@ -341,6 +341,90 @@ describe("power service", () => {
     expect(history.getHistory).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes 5-second retained history on each source cadence", async () => {
+    let nowMs = NOW.getTime();
+    const current = currentProvider(currentState());
+    const results = [
+      "2026-08-18T18:00:00.000Z",
+      "2026-08-18T18:00:05.000Z",
+      "2026-08-18T18:00:10.000Z",
+    ].map((timestamp) => {
+      const result = historyResult();
+      return {
+        ...result,
+        observedAt: timestamp,
+        coverage: {
+          ...result.coverage,
+          requestedRange: "15m" as const,
+          effectiveResolution: "5s" as const,
+          newestSampleAt: timestamp,
+        },
+      };
+    });
+    const history: PowerHistoryProvider = {
+      getHistory: vi.fn(async () => results.shift()!),
+    };
+    const request: PowerHistoryRequest = { range: "15m", resolution: "5s" };
+    const now = () => new Date(nowMs);
+
+    const first = await getCachedPowerEnvelope("cadence-5s", current, history, request, now, 5);
+    expect(first.data.history?.coverage.newestSampleAt).toBe("2026-08-18T18:00:00.000Z");
+
+    nowMs += 5_000;
+    const second = await getCachedPowerEnvelope("cadence-5s", current, history, request, now, 5);
+    expect(history.getHistory).toHaveBeenCalledTimes(2);
+    expect(second.data.history?.coverage.newestSampleAt).toBe("2026-08-18T18:00:05.000Z");
+
+    nowMs += 5_000;
+    const third = await getCachedPowerEnvelope("cadence-5s", current, history, request, now, 5);
+    expect(history.getHistory).toHaveBeenCalledTimes(3);
+    expect(third.data.history?.coverage.newestSampleAt).toBe("2026-08-18T18:00:10.000Z");
+  });
+
+  it("preserves the 15-second source cadence", async () => {
+    let nowMs = NOW.getTime();
+    const current = currentProvider(currentState());
+    const timestamps = [
+      "2026-08-18T18:00:00.000Z",
+      "2026-08-18T18:00:15.000Z",
+    ];
+    const results = timestamps.map((timestamp) => {
+      const result = historyResult();
+      return {
+        ...result,
+        observedAt: timestamp,
+        coverage: { ...result.coverage, newestSampleAt: timestamp },
+      };
+    });
+    const history: PowerHistoryProvider = {
+      getHistory: vi.fn(async () => results.shift()!),
+    };
+    const request: PowerHistoryRequest = { range: "1h", resolution: "auto" };
+    const now = () => new Date(nowMs);
+
+    await getCachedPowerEnvelope("cadence-15s", current, history, request, now, 15);
+    nowMs += 5_000;
+    const cached = await getCachedPowerEnvelope("cadence-15s", current, history, request, now, 15);
+    expect(history.getHistory).toHaveBeenCalledTimes(1);
+    expect(cached.data.history?.coverage.newestSampleAt).toBe(timestamps[0]);
+
+    nowMs += 10_000;
+    const refreshed = await getCachedPowerEnvelope("cadence-15s", current, history, request, now, 15);
+    expect(history.getHistory).toHaveBeenCalledTimes(2);
+    expect(refreshed.data.history?.coverage.newestSampleAt).toBe(timestamps[1]);
+  });
+
+  it("separates cached history entries by source cadence", async () => {
+    const current = currentProvider(currentState());
+    const history = historyProvider(historyResult());
+    const request: PowerHistoryRequest = { range: "15m", resolution: "5s" };
+
+    await getCachedPowerEnvelope("cadence-key", current, history, request, () => NOW, 15);
+    await getCachedPowerEnvelope("cadence-key", current, history, request, () => NOW, 5);
+
+    expect(history.getHistory).toHaveBeenCalledTimes(2);
+  });
+
   it("evicts rejected source reads so recovery is not cached as unavailable", async () => {
     let attempts = 0;
     const recoveringCurrent: PowerProvider = {

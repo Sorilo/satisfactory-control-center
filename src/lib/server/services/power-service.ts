@@ -13,7 +13,6 @@ import type {
 } from "@/domain/power";
 
 const CURRENT_CACHE_TTL_MS = 5_000;
-const HISTORY_CACHE_TTL_MS = 30_000;
 const MAX_CACHE_ENTRIES = 100;
 
 type CacheEntry<T> = { expiresAtMs: number; value: Promise<T> };
@@ -85,7 +84,8 @@ export async function getCachedPowerEnvelope(
   currentProvider: PowerProvider,
   historyProvider: PowerHistoryProvider | null,
   request: PowerHistoryRequest,
-  now: () => Date = () => new Date()
+  now: () => Date = () => new Date(),
+  sourceIntervalSeconds = 15
 ): Promise<PowerEnvelope> {
   const nowMs = now().getTime();
   const currentRead = getCachedPowerCurrent(serverId, currentProvider, nowMs);
@@ -110,9 +110,9 @@ export async function getCachedPowerEnvelope(
   const historyRead = historyProvider
     ? readCached(
         historyCache,
-        `${serverId}:${request.range}:${request.resolution}:${request.startAt ?? ""}:${request.endAt ?? ""}`,
+        `${serverId}:${sourceIntervalSeconds}:${request.range}:${request.resolution}:${request.startAt ?? ""}:${request.endAt ?? ""}`,
         nowMs,
-        HISTORY_CACHE_TTL_MS,
+        sourceIntervalSeconds * 1_000,
         () => historyProvider.getHistory(request)
       )
     : Promise.reject(new SourceUnavailableError());

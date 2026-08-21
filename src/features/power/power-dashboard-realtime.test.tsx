@@ -80,6 +80,29 @@ function envelopeWithHistory(): PowerEnvelope {
   return value;
 }
 
+function rollingHistoryEnvelope(newestSampleAt: string, lastValue: number): PowerEnvelope {
+  const value = envelope();
+  const newestTimestamp = Date.parse(newestSampleAt);
+  const points = Array.from({ length: 181 }, (_, index) => ({
+    timestamp: new Date(newestTimestamp - (180 - index) * 5_000).toISOString(),
+    value: index === Math.max(0, lastValue - 10) ? lastValue : 100,
+  }));
+  value.freshness.history = { state: "live", observedAt: newestSampleAt };
+  value.data.history = {
+    coverage: {
+      state: "complete",
+      requestedRange: "15m",
+      effectiveResolution: "5s",
+      retentionHorizonDays: 15,
+      oldestSampleAt: points[0]!.timestamp,
+      newestSampleAt,
+    },
+    series: [{ key: "capacityMw", circuitId: "0", points }],
+    production: { state: "unavailable", reason: "source-not-collected" },
+  };
+  return value;
+}
+
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readonly url: string;
@@ -290,6 +313,55 @@ describe("PowerDashboard realtime recovery", () => {
     expect(screen.getByText(/3 points/i)).toBeInTheDocument();
     expect(screen.getByText(/6:01:00 PM UTC/)).toBeInTheDocument();
     expect(screen.getByText(/History source current/i)).toBeInTheDocument();
+  });
+
+  it("refreshes a 15-minute five-second rolling history at each source cadence", async () => {
+    vi.useFakeTimers();
+    const responses = [
+      rollingHistoryEnvelope("2026-08-18T18:00:05.000Z", 101),
+      rollingHistoryEnvelope("2026-08-18T18:00:10.000Z", 102),
+      rollingHistoryEnvelope("2026-08-18T18:00:15.000Z", 103),
+    ];
+    const requestUrls: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      requestUrls.push(String(input));
+      const response = responses.shift();
+      if (!response) throw new Error("unexpected retained-history request");
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    render(
+      <PowerDashboard
+        envelope={rollingHistoryEnvelope("2026-08-18T18:00:00.000Z", 100)}
+        dataMode="live"
+        streamEnabled
+        selectedRange="15m"
+        selectedResolution="5s"
+        sourceIntervalSeconds={5}
+      />
+    );
+
+    const chartPath = () => document.querySelector(".ttsc__line")?.getAttribute("d");
+    let previousPath = chartPath();
+    expect(previousPath).toBeTruthy();
+    expect(screen.getByText(/181 points/i)).toBeInTheDocument();
+    const expectedUrl = "/api/v1/power?serverId=main&range=15m&resolution=5s";
+
+    for (const [index, expectedTime] of ["6:00:05 PM UTC", "6:00:10 PM UTC", "6:00:15 PM UTC"].entries()) {
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(fetch).toHaveBeenCalledTimes(index + 1);
+      expect(requestUrls[index]).toBe(expectedUrl);
+      expect(screen.getByText(/181 points/i)).toBeInTheDocument();
+      expect(screen.getAllByText(new RegExp(expectedTime)).length).toBeGreaterThan(0);
+      expect(screen.getByText(/History source current/i)).toBeInTheDocument();
+      const nextPath = chartPath();
+      expect(nextPath).toBeTruthy();
+      expect(nextPath).not.toBe(previousPath);
+      previousPath = nextPath;
+    }
   });
 
   it("ignores malformed power-details events without failing or closing the healthy stream", async () => {

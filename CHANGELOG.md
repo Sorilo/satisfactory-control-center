@@ -2,7 +2,25 @@
 
 All notable release changes are documented here.
 
-## [0.2.0-rc.4] - 2026-08-20
+## [0.2.0-rc.5] - 2026-08-21
+
+### Changed
+
+- Retained-history cache entries now expire at the configured Prometheus source cadence instead of a fixed 30-second TTL, and cadence is part of cache identity.
+- The validated source cadence is passed through both the server-rendered Power page and the public Power history loader without changing current/SSE behavior.
+
+### Added
+
+- Service, component, and Chromium browser regression coverage for the complete `15m` / `5s` path: approximately 5-second requests, advancing history timestamps, stable 181-point rolling history, visible freshness, and SVG chart updates.
+
+### Boundaries
+
+- `PROMETHEUS_SCRAPE_INTERVAL_SECONDS=5` requires an externally verified 5-second Prometheus source; `15` remains the safe default and RC.4-compatible rollback configuration.
+- No final `v0.2.0`, Slice 3, PostgreSQL persistence, map/location contract, viewport zoom, or `15m/1s` live trace.
+- RC.4 remains the immediate rollback release; no existing tag or release is overwritten.
+
+See [`docs/releases/v0.2.0-rc.5.md`](docs/releases/v0.2.0-rc.5.md) for the implementation delta, safety boundary, and release gates.
+
 
 ### Added
 
