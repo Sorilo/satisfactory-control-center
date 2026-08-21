@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceStateSchema } from "./common-contracts";
 
 /**
  * Public, versioned v1 contracts. These are strict allowlists: undeclared
@@ -20,7 +21,7 @@ export const serverCatalogSchema = z
   })
   .strict();
 
-export const freshnessStateSchema = z.enum(["live", "stale", "unavailable"]);
+export const freshnessStateSchema = sourceStateSchema;
 
 export const unavailableSourceSchema = z.enum(["frm", "prometheus", "postgres"]);
 

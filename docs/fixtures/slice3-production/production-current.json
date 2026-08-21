@@ -1,0 +1,42 @@
+{
+  "fixtureType": "synthetic-normalized-production-envelope",
+  "sourceCapability": {
+    "frmRevision": "32fe64e0c22389a944c27222ef6c881f5e207072",
+    "endpoint": "getProdStats",
+    "companionRevision": "725dc8cba4ae16cf533591f252cc15a85370e0c5",
+    "historyState": "unsupported",
+    "historyReason": "production-history-not-observed"
+  },
+  "envelope": {
+    "apiVersion": "v1",
+    "serverId": "main",
+    "freshness": {
+      "state": "live",
+      "observedAt": "2026-08-21T03:00:00.000Z"
+    },
+    "data": {
+      "items": [
+        {
+          "itemKey": "iron-rod",
+          "name": "Iron Rod",
+          "form": "Solid",
+          "productionPerMinute": 120,
+          "consumptionPerMinute": 60,
+          "maxProductionPerMinute": 240,
+          "maxConsumptionPerMinute": 120,
+          "netPerMinute": 60,
+          "provenance": {
+            "throughput": "observed",
+            "capacity": "observed",
+            "net": "calculated"
+          }
+        }
+      ],
+      "history": {
+        "state": "unsupported",
+        "reason": "production-history-not-observed"
+      }
+    },
+    "unavailableSources": []
+  }
+}

@@ -20,6 +20,7 @@ describe("health routes", () => {
   it("provides a combined sanitized status", async () => {
     const response = await combined();
     expect([200, 503]).toContain(response.status);
+    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
     expect(await response.json()).toHaveProperty("status");
   });
 });

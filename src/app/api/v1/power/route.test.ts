@@ -44,6 +44,7 @@ describe("GET /api/v1/power", () => {
     const response = await GET(new Request("http://app/api/v1/power"));
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
     const body = await response.json();
     expect(body.serverId).toBe("main");
     expect(body.data.history.coverage).toMatchObject({ requestedRange: "1h", effectiveResolution: "15s" });

@@ -1,7 +1,9 @@
 import type { FrmProvider } from "@/domain/overview";
 import type { PowerHistoryProvider, PowerProvider } from "@/domain/power";
+import type { ProductionProvider } from "@/domain/production";
 import { FrmOverviewAdapter } from "@/lib/server/adapters/frm/frm-overview-adapter";
 import { FrmPowerAdapter } from "@/lib/server/adapters/frm/frm-power-adapter";
+import { FrmProductionAdapter } from "@/lib/server/adapters/frm/frm-production-adapter";
 import { PrometheusPowerHistoryAdapter } from "@/lib/server/adapters/prometheus/prometheus-power-history-adapter";
 import type {
   RuntimeConfig,
@@ -9,6 +11,7 @@ import type {
 } from "@/lib/server/config/runtime-config";
 import { MockOverviewProvider } from "./mock-overview-provider";
 import { MockPowerHistoryProvider, MockPowerProvider } from "./mock-power-providers";
+import { MockProductionProvider } from "./mock-production-providers";
 
 /** Concrete providers constructed only from validated private runtime config. */
 export function createFrmProvider(
@@ -22,6 +25,17 @@ export function createFrmProvider(
     });
   }
   return new MockOverviewProvider();
+}
+
+export function createProductionProvider(
+  config: RuntimeConfig,
+  server: ServerConfig
+): ProductionProvider {
+  if (config.dataMode === "mock") return new MockProductionProvider();
+  return new FrmProductionAdapter({
+    baseUrl: server.frmBaseUrl,
+    token: server.frmToken ?? undefined,
+  });
 }
 
 export interface PowerProviders {

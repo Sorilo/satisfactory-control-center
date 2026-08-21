@@ -6,6 +6,7 @@ import {
   UpstreamError,
   type Fetcher,
 } from "@/lib/server/http/bounded-json";
+import { withBoundedRetry } from "@/lib/server/reliability/upstream-policy";
 
 export { UpstreamError };
 export type { Fetcher };
@@ -132,13 +133,13 @@ export class FrmOverviewAdapter implements FrmProvider {
     if (this.token !== null) {
       headers["X-FRM-Authorization"] = this.token;
     }
-    return requestBoundedJson({
+    return withBoundedRetry(() => requestBoundedJson({
       url,
       headers,
       fetcher: this.fetcher,
       maxResponseBytes: this.maxResponseBytes,
       timeoutMs: this.timeoutMs,
-    });
+    }));
   }
 
 

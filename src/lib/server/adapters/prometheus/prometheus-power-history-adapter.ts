@@ -14,6 +14,7 @@ import {
   UpstreamError,
   type Fetcher,
 } from "@/lib/server/http/bounded-json";
+import { withBoundedRetry } from "@/lib/server/reliability/upstream-policy";
 import {
   prometheusMatrixResponseSchema,
   type PrometheusMatrixResponse,
@@ -169,12 +170,12 @@ export class PrometheusPowerHistoryAdapter implements PowerHistoryProvider {
     url.searchParams.set("start", String(startSeconds));
     url.searchParams.set("end", String(endSeconds));
     url.searchParams.set("step", step);
-    const raw = await requestBoundedJson({
+    const raw = await withBoundedRetry(() => requestBoundedJson({
       url,
       fetcher: this.fetcher,
       maxResponseBytes: this.maxResponseBytes,
       timeoutMs: this.timeoutMs,
-    });
+    }));
     return parseUpstream(prometheusMatrixResponseSchema, raw);
   }
 

@@ -1,0 +1,95 @@
+{
+  "checkpoint": {
+    "checkedAt": "2026-08-21",
+    "repositoryAnchor": "8dfc3d114c45795ae45549f702be6494f94095b3",
+    "secretsRetained": false
+  },
+  "sources": [
+    {
+      "name": "frm",
+      "revision": "32fe64e0c22389a944c27222ef6c881f5e207072",
+      "evidence": "immutable-source-tree",
+      "currentCapabilities": [
+        "production-summary",
+        "factory-detail",
+        "storage-inventory",
+        "players",
+        "map-markers-and-coordinates",
+        "trains-rail-and-stations",
+        "wheeled-vehicles-and-stations",
+        "drones-and-stations",
+        "session-state"
+      ],
+      "privacyGates": [
+        "player-names-and-positions",
+        "station-and-vehicle-names",
+        "driver-names",
+        "coordinates",
+        "inventories"
+      ],
+      "negativeFindings": [
+        "raw-identifiers-and-class-names-are-not-public-contract-fields",
+        "power-production-semantics-remain-unresolved",
+        "progress-and-milestones-not-yet-mapped-to-a-public-contract"
+      ]
+    },
+    {
+      "name": "frm-companion",
+      "revision": "725dc8cba4ae16cf533591f252cc15a85370e0c5",
+      "evidence": "immutable-source-tree",
+      "metricFamilies": [
+        "power_capacity",
+        "power_consumed",
+        "power_max_consumed",
+        "items_produced_per_min",
+        "items_consumed_per_min",
+        "item_production_capacity_percent",
+        "item_consumption_capacity_percent",
+        "machine_items_produced_per_min",
+        "vehicle_round_trip_seconds",
+        "train_round_trip_seconds",
+        "train_derailed",
+        "drone_port_round_trip_seconds"
+      ],
+      "privateLabels": [
+        "url",
+        "session_name"
+      ],
+      "negativeFindings": [
+        "no-power-production-gauge",
+        "metric-family-presence-must-be-discovered-per-deployment",
+        "retained-history-is-prometheus-deployment-dependent"
+      ]
+    },
+    {
+      "name": "satisfactory-monitoring",
+      "revision": "30cd8668117c17e7953b820edc1f1283a13bb0f1",
+      "evidence": "immutable-source-tree",
+      "prometheus": {
+        "configuredScrapeInterval": "15s",
+        "configuredEvaluationInterval": "10s",
+        "applicationMayRequestFinerThanSource": false
+      },
+      "frmcache": {
+        "schemaTablesObserved": [
+          "cache",
+          "cache_with_history"
+        ],
+        "controlCenterMayWrite": false,
+        "powerHistoryFallback": "unsupported-until-separately-verified"
+      },
+      "negativeFindings": [
+        "deployment-example-secrets-not-retained",
+        "grafana-query-design-is-not-a-public-api",
+        "moving-branch-builds-are-not-immutable-provenance"
+      ]
+    }
+  ],
+  "publicCapabilityRules": {
+    "emptyResponse": "live-empty",
+    "sourceFailure": "unavailable",
+    "unobservedMetric": "unsupported-or-unavailable",
+    "derivedValue": "must-carry-calculated-provenance",
+    "historicalGeneration": "unsupported-until-source-reviewed-and-retained"
+  }
+}

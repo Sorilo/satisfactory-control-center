@@ -167,6 +167,35 @@ h2 { font-size: 24px; line-height: 1.05; }
 .power-detail-list strong { color: var(--text); }
 .power-detail-list span { color: var(--text-dim); font: 500 10px/1.5 var(--font-mono); text-align: right; }
 
+.production-stack { display: grid; gap: 24px; min-width: 0; }
+.production-search-panel { display: grid; gap: 14px; }
+.production-search-form { display: grid; gap: 8px; }
+.production-search-form > label { color: var(--text-faint); font: 500 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.production-search-form > div { display: flex; align-items: center; gap: 8px; }
+.production-search-form input[type="text"], .production-search-form input:not([type]) { min-width: 0; flex: 1; height: 36px; padding: 0 11px; color: var(--text); background: var(--surface-inset); border: 1px solid var(--line-strong); }
+.production-search-form button, .production-search-form a { height: 36px; padding: 0 13px; display: inline-flex; align-items: center; color: var(--orange-bright); background: var(--orange-soft); border: 1px solid var(--orange); text-decoration: none; cursor: pointer; font: 600 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.production-table-panel { min-width: 0; }
+.production-table-wrap { min-width: 0; overflow-x: auto; }
+.production-table { width: 100%; min-width: 760px; border-collapse: collapse; margin-top: 18px; font-variant-numeric: tabular-nums; }
+.production-table th, .production-table td { padding: 13px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.production-table thead th { color: var(--text-faint); font: 500 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.production-table th:first-child { text-align: left; }
+.production-table tbody th { color: var(--orange-bright); font: 600 12px var(--font-mono); }
+.production-table tbody th a { color: inherit; }
+.production-table td { color: var(--text-dim); font: 500 11px var(--font-mono); }
+.production-table small, .production-table tbody th small { display: block; margin-top: 4px; color: var(--text-faint); font: 500 9px var(--font-mono); }
+.production-positive { color: var(--green) !important; }
+.production-negative { color: var(--red) !important; }
+.provenance-chip { color: var(--yellow); font-size: 9px; text-transform: uppercase; }
+.production-empty { min-height: 220px; display: grid; place-content: center; text-align: center; }
+.production-empty h2 { text-transform: uppercase; }
+.production-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 18px; background: var(--line); border: 1px solid var(--line); }
+.production-detail-grid div { padding: 16px; background: var(--surface-inset); }
+.production-detail-grid span, .production-detail-grid strong { display: block; }
+.production-detail-grid span { color: var(--text-faint); font: 500 9px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.production-detail-grid strong { margin-top: 8px; font: 600 16px var(--font-mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
 .unavailable-state { max-width: 760px; padding: 40px; }
 .unavailable-state h1 { margin-bottom: 18px; }
 .unavailable-state p { color: var(--text-dim); line-height: 1.65; }
@@ -208,6 +237,9 @@ h2 { font-size: 24px; line-height: 1.05; }
   .power-coverage { text-align: left; }
   .power-range { width: 100%; overflow-x: auto; }
   .power-resolution { width: 100%; flex-wrap: wrap; }
+  .production-search-form > div { flex-wrap: wrap; }
+  .production-search-form input[type="text"], .production-search-form input:not([type]) { flex-basis: 100%; }
+  .production-detail-grid { grid-template-columns: repeat(2, 1fr); }
   .power-detail-grid { grid-template-columns: 1fr; }
   .ttsc__plot { margin-top: 14px; }
   .kpi-card { min-height: 120px; }
@@ -217,6 +249,7 @@ h2 { font-size: 24px; line-height: 1.05; }
 }
 @media (max-width: 420px) {
   .kpi-grid, .power-kpi-grid { grid-template-columns: 1fr; }
+  .production-detail-grid { grid-template-columns: 1fr; }
   .kpi-card { min-height: 108px; }
   .attention-list li { grid-template-columns: 1fr; }
   .panel { padding: 20px; }

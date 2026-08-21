@@ -8,7 +8,9 @@ This matrix prevents a production-shaped foundation from being mistaken for the 
 | Mock/live modes | Deterministic mock + reviewed FRM overview and Power adapters | Broader live providers pending |
 | Curated read-only boundary | Opaque IDs, fixed endpoints, Zod allowlists, size/timeout bounds | Enforced; extend per route |
 | FRM realtime | Shared Power aggregator plus a shared 30-second detail aggregator, bounded same-origin SSE (`power` and additive `power-details` events), strict snapshots, polling fallback | Implemented for Power; later domains pending |
-| Prometheus history | Fixed Power query templates, bounded adapter, coverage/coarsening contract | Implemented for Power; later domains pending |
+| Prometheus history | Fixed Power query templates, bounded adapter, coverage/coarsening contract | Implemented for Power; production history remains unsupported |
+| Current production | Pinned FRM `getProdStats` shape plus Companion production gauge capability | Implemented for Slice 3; current-only, normalized, bounded |
+| Production history | No selected-deployment retained production series evidence | Explicitly unsupported; no PostgreSQL/Prometheus/Grafana claim |
 | PostgreSQL history | Deferred until read-only schema inspection | Pending |
 | Full original map | Original-design/licensing decision | Slice 4 |
 | 11 first-class views | Responsive navigation and honest staged states | Data-rich slices pending |
@@ -18,6 +20,7 @@ This matrix prevents a production-shaped foundation from being mistaken for the 
 | Abuse protection | Bounded single-process token bucket + proxy guidance | Distributed/CDN enforcement deployment-owned |
 | Tests and CI | Unit/integration/e2e/build evidence + authoritative hosted container gate | The exact smoke-tested image artifact is the only artifact eligible for GHCR publication |
 | Architecture/security/deploy docs | Contracts, ADRs, threat/deploy guidance | Implemented; maintain per slice |
+| Phase 0 source/capability checkpoint | Immutable FRM/Companion/monitoring evidence, sanitized fixtures, explicit deployment blocker | Completed for pinned source; live validation blocked until `unraid-phase10` is reachable |
 | Unraid compose example | Runtime networks/env/health/hardening/rollback | Implemented, network names must be inspected |
 | Structured logs/metrics | Sanitized public errors + health routes | Structured logger/redaction, request IDs, app metrics, dashboards pending |
 

@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/providers/provider-factory";
 import { getCachedOverviewEnvelope } from "@/lib/server/services/overview-service";
 import { getClientKey, TokenBucketLimiter } from "@/lib/server/security/rate-limiter";
+import { createRequestContext, withRequestId } from "@/lib/server/observability/request-context";
 
 const overviewLimiter = new TokenBucketLimiter({
   capacity: 60,
@@ -33,11 +34,14 @@ const NOT_FOUND_BODY = {
  * before a private `no-store` cache policy is attached.
  */
 export async function GET(request: Request) {
+  const context = createRequestContext(request, "/api/v1/overview");
+  const respond = (body: unknown, init?: ResponseInit) =>
+    withRequestId(NextResponse.json(body, init), context);
   let config;
   try {
     config = parseRuntimeConfig(process.env);
   } catch {
-    return NextResponse.json(
+    return respond(
       { error: { code: "CONFIGURATION_UNAVAILABLE", message: "Service configuration unavailable." } },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
@@ -45,7 +49,7 @@ export async function GET(request: Request) {
 
   const limit = overviewLimiter.consume(getClientKey(request, config.trustProxyHeaders));
   if (!limit.allowed) {
-    return NextResponse.json(
+    return respond(
       { error: { code: "RATE_LIMITED", message: "Too many requests." } },
       {
         status: 429,
@@ -61,7 +65,7 @@ export async function GET(request: Request) {
     new URL(request.url).searchParams.get("serverId") ?? "";
 
   if (!isValidPublicServerId(serverId)) {
-    return NextResponse.json(
+    return respond(
       { error: { code: "INVALID_SERVER_ID", message: "Invalid server id." } },
       { status: 400, headers: { "Cache-Control": "no-store" } }
     );
@@ -71,7 +75,7 @@ export async function GET(request: Request) {
   try {
     server = resolvePublicServer(config, serverId);
   } catch {
-    return NextResponse.json(NOT_FOUND_BODY, {
+    return respond(NOT_FOUND_BODY, {
       status: 404,
       headers: { "Cache-Control": "no-store" },
     });
@@ -86,7 +90,7 @@ export async function GET(request: Request) {
   );
   const body = overviewEnvelopeSchema.parse(envelope);
 
-  return NextResponse.json(body, {
+  return respond(body, {
     headers: {
       "Cache-Control": "no-store",
     },

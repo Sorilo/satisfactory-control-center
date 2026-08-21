@@ -1,7 +1,7 @@
 # Architecture review
 
-**Status:** Accepted through Slice 2; later slices remain Planned.<br>
-**Reviewed:** 2026-08-18 against FRM upstream commit `32fe64e0c22389a944c27222ef6c881f5e207072`.
+**Status:** Accepted through Slice 2; Phase 0 source-capability checkpoint accepted; later slices remain Planned.<br>
+**Reviewed:** 2026-08-21 against immutable FRM, Companion, and satisfactory-monitoring revisions recorded in [`docs/data-sources.md`](data-sources.md).
 
 ## Scope and evidence labels
 
@@ -110,6 +110,8 @@ sequenceDiagram
 6. **SSE proxy buffering:** validate through the actual reverse proxy/Tunnel, with polling fallback retained.
 7. **Process-local cache:** acceptable for one replica; document and redesign before scaling.
 8. **Public player privacy:** positions and inventory default independently and are filtered server-side.
+9. **Source cadence drift:** the pinned monitoring configuration declares a 15-second Prometheus scrape interval; finer requested history resolution is unsupported until the selected deployment is independently verified.
+10. **Evidence drift:** source-tree evidence, historical deployment fixtures, and current live validation are separate evidence classes. A blocked live-validation path must not be silently reported as a verified deployment.
 
 ## Delivery phases
 

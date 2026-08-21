@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-08-21",
+  "routes": [
+    {
+      "route": "power",
+      "status": "implemented",
+      "current": {
+        "source": "frm",
+        "maxCircuits": 100,
+        "maxGenerators": 100,
+        "maxMajorConsumers": 10
+      },
+      "history": {
+        "source": "prometheus",
+        "retentionDays": 15,
+        "maxSeries": 100,
+        "maxPointsPerSeries": 2000,
+        "sourceCadence": "deployment-configured",
+        "allowedResolutions": ["auto", "5s", "15s", "30s", "1m", "2m", "5m", "10m", "15m", "1h"],
+        "fineResolutionRule": "requested-resolution-must-not-be-finer-than-verified-source-cadence",
+        "coverageStates": ["complete", "partial", "empty", "unsupported"]
+      }
+    },
+    {
+      "route": "production",
+      "status": "planned",
+      "current": {
+        "source": "frm-and-companion",
+        "maxItems": 200,
+        "maxProducers": 100,
+        "maxConsumers": 100
+      },
+      "history": {
+        "source": "prometheus-only-after-metric-discovery",
+        "status": "not-yet-enabled",
+        "unsupportedReason": "deployment-retention-and-item-series-availability-not-yet-observed"
+      }
+    },
+    {
+      "route": "map",
+      "status": "planned",
+      "history": {
+        "status": "not-applicable-until-map-object-contract-exists"
+      }
+    }
+  ],
+  "globalBounds": {
+    "responseBytes": "server-configured-and-tested",
+    "requestParameters": "opaque-ids-and-allowlisted-values-only",
+    "rawUpstreamSelectors": "forbidden"
+  }
+}

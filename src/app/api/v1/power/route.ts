@@ -16,6 +16,8 @@ import {
 } from "@/lib/server/config/runtime-config";
 import { createPowerProviders } from "@/lib/server/providers/provider-factory";
 import { getClientKey, TokenBucketLimiter } from "@/lib/server/security/rate-limiter";
+import { createRequestContext, withRequestId } from "@/lib/server/observability/request-context";
+import { createStructuredLogger } from "@/lib/server/observability/logger";
 import { getCachedPowerEnvelope } from "@/lib/server/services/power-service";
 
 const HISTORY_LIMITER_OPTIONS = {
@@ -27,6 +29,7 @@ const HISTORY_LIMITER_OPTIONS = {
 let powerHistoryLimiter = new TokenBucketLimiter(HISTORY_LIMITER_OPTIONS);
 
 const NO_STORE = { "Cache-Control": "no-store" };
+const logger = createStructuredLogger();
 const ALLOWED_QUERY_KEYS = new Set(["serverId", "range", "resolution", "startAt", "endAt"]);
 
 type PowerLoader = (
@@ -81,11 +84,16 @@ export async function handlePowerRequest(
   request: Request,
   loader: PowerLoader = defaultLoader
 ): Promise<Response> {
+  const context = createRequestContext(request, "/api/v1/power");
+  const respondError = (status: number, code: string, message: string, headers: Record<string, string> = {}) => {
+    logger.warn({ requestId: context.requestId, route: context.route, code, message });
+    return withRequestId(errorResponse(status, code, message, headers), context);
+  };
   let config: RuntimeConfig;
   try {
     config = parseRuntimeConfig(process.env);
   } catch {
-    return errorResponse(
+    return respondError(
       503,
       "CONFIGURATION_UNAVAILABLE",
       "Service configuration unavailable."
@@ -96,24 +104,24 @@ export async function handlePowerRequest(
     getClientKey(request, config.trustProxyHeaders)
   );
   if (!limit.allowed) {
-    return errorResponse(429, "RATE_LIMITED", "Too many requests.", {
+    return respondError(429, "RATE_LIMITED", "Too many requests.", {
       "Retry-After": String(limit.retryAfterSeconds),
     });
   }
 
   const query = parseQuery(new URL(request.url), config.defaultServerId);
   if (!query) {
-    return errorResponse(400, "INVALID_QUERY", "Invalid query parameters.");
+    return respondError(400, "INVALID_QUERY", "Invalid query parameters.");
   }
   if (!isValidPublicServerId(query.serverId)) {
-    return errorResponse(400, "INVALID_SERVER_ID", "Invalid server id.");
+    return respondError(400, "INVALID_SERVER_ID", "Invalid server id.");
   }
 
   let server: ServerConfig;
   try {
     server = resolvePublicServer(config, query.serverId);
   } catch {
-    return errorResponse(404, "SERVER_NOT_FOUND", "Server not found.");
+    return respondError(404, "SERVER_NOT_FOUND", "Server not found.");
   }
 
   try {
@@ -122,9 +130,9 @@ export async function handlePowerRequest(
     );
     const status =
       envelope.data.current === null && envelope.data.history === null ? 503 : 200;
-    return NextResponse.json(envelope, { status, headers: NO_STORE });
+    return withRequestId(NextResponse.json(envelope, { status, headers: NO_STORE }), context);
   } catch {
-    return errorResponse(503, "SERVICE_UNAVAILABLE", "Power service unavailable.");
+    return respondError(503, "SERVICE_UNAVAILABLE", "Power service unavailable.");
   }
 }
 

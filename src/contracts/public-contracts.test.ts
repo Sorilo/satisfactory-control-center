@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { overviewEnvelopeSchema, serverCatalogSchema } from "./public-contracts";
+import { sourceObservationSchema } from "./common-contracts";
 
 describe("public v1 contracts", () => {
   it("rejects undeclared fields at the public boundary", () => {
@@ -8,6 +9,11 @@ describe("public v1 contracts", () => {
 
   it("accepts explicit unavailable overview state", () => {
     expect(overviewEnvelopeSchema.parse({ apiVersion: "v1", generatedAt: "2026-08-18T18:00:00.000Z", serverId: "main", freshness: { state: "unavailable", observedAt: null }, data: null, unavailableSources: ["frm"] }).data).toBeNull();
+  });
+
+  it("supports explicit empty and unsupported source observations", () => {
+    expect(sourceObservationSchema.parse({ state: "empty", observedAt: null })).toEqual({ state: "empty", observedAt: null });
+    expect(sourceObservationSchema.parse({ state: "unsupported", observedAt: null, reason: "source-not-collected" }).state).toBe("unsupported");
   });
 
   it("accepts capacity-based overview power and rejects unresolved production", () => {
